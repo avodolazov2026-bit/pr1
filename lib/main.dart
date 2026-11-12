@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:geo_groups/my_groups_screen.dart';
+
 void main() {
   runApp(const MyApp());
 }
@@ -81,10 +83,13 @@ class HomeScreen extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               OutlinedButton(
-                onPressed: () => _showMessage(
-                  context,
-                  'Раздел „Мои группы“ пока в разработке',
-                ),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (context) => const MyGroupsScreen(),
+                    ),
+                  );
+                },
                 child: const Text('Мои группы'),
               ),
             ],
