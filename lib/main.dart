@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:geo_groups/created_groups_screen.dart';
 import 'package:geo_groups/my_groups_screen.dart';
 
 void main() {
@@ -67,10 +68,13 @@ class HomeScreen extends StatelessWidget {
               ),
               const SizedBox(height: 32),
               FilledButton(
-                onPressed: () => _showMessage(
-                  context,
-                  'Создание группы скоро будет доступно',
-                ),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (context) => const CreatedGroupsScreen(),
+                    ),
+                  );
+                },
                 child: const Text('Создать группу'),
               ),
               const SizedBox(height: 12),

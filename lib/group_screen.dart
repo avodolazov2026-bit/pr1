@@ -1,22 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/group_map_screen.dart';
-
-class GroupMember {
-  GroupMember({
-    required this.name,
-    required this.distanceMeters,
-    this.isCurrentUser = false,
-    this.hasLeftGroup = false,
-  });
-
-  final String name;
-  final int distanceMeters;
-  final bool isCurrentUser;
-
-  /// Участник остаётся в составе группы, но больше не делится геопозицией.
-  bool hasLeftGroup;
-}
 
 class GroupScreen extends StatelessWidget {
   const GroupScreen({
