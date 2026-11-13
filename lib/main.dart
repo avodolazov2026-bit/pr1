@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:geo_groups/created_groups_screen.dart';
+import 'package:geo_groups/invitations_screen.dart';
 import 'package:geo_groups/my_groups_screen.dart';
 
 void main() {
@@ -25,12 +26,6 @@ class MyApp extends StatelessWidget {
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
-
-  void _showMessage(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -79,10 +74,13 @@ class HomeScreen extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               OutlinedButton(
-                onPressed: () => _showMessage(
-                  context,
-                  'Присоединение по приглашению скоро будет доступно',
-                ),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (context) => const InvitationsScreen(),
+                    ),
+                  );
+                },
                 child: const Text('Присоединиться по приглашению'),
               ),
               const SizedBox(height: 12),

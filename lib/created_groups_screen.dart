@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/group_card.dart';
 import 'package:geo_groups/group_screen.dart';
+import 'package:geo_groups/invite_source_sheet.dart';
 
 class CreatedGroupsScreen extends StatefulWidget {
   const CreatedGroupsScreen({super.key});
@@ -18,9 +19,12 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen> {
     final leftGroupName = await Navigator.of(context).push<String>(
       MaterialPageRoute<String>(
         builder: (context) => GroupScreen(
-          name: group.name,
-          activeUntil: group.activeUntilLabel,
-          members: group.members,
+          group: group,
+          onChanged: () {
+            if (mounted) {
+              setState(() {});
+            }
+          },
         ),
       ),
     );
@@ -46,22 +50,30 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen> {
       return;
     }
 
-    GroupsStore.instance.addGroup(
-      GeoGroup(
-        name: draft.name,
-        createdAt: DateTime.now(),
-        endsAt: draft.endsAt,
-        createdByCurrentUser: true,
-        members: [
+    final group = GeoGroup(
+      id: GroupsStore.instance.nextId('group'),
+      name: draft.name,
+      createdAt: DateTime.now(),
+      endsAt: draft.endsAt,
+      createdByCurrentUser: true,
+      members: [
+        GroupMember(
+          id: currentUserId,
+          name: 'Вы',
+          role: MemberRole.organizer,
+          status: MembershipStatus.active,
+          isCurrentUser: true,
+        ),
+        for (final person in draft.invited)
           GroupMember(
-            name: 'Вы',
-            distanceMeters: 0,
-            isCurrentUser: true,
-            isOrganizer: true,
+            id: person.id,
+            name: person.name,
+            status: MembershipStatus.invited,
           ),
-        ],
-      ),
+      ],
     );
+    GroupsStore.instance.addGroup(group);
+    GroupsStore.instance.syncInvitations(group);
     setState(() {});
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Группа создана')),
@@ -201,10 +213,15 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen> {
 }
 
 class _GroupDraft {
-  const _GroupDraft({required this.name, required this.endsAt});
+  const _GroupDraft({
+    required this.name,
+    required this.endsAt,
+    required this.invited,
+  });
 
   final String name;
-  final DateTime endsAt;
+  final DateTime? endsAt;
+  final List<DirectoryPerson> invited;
 }
 
 class _NewGroupSheet extends StatefulWidget {
@@ -218,6 +235,8 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
   final _nameController = TextEditingController();
   DateTime? _date;
   TimeOfDay? _time;
+  bool _indefinite = false;
+  final List<DirectoryPerson> _invited = <DirectoryPerson>[];
   String? _nameError;
   String? _scheduleError;
 
@@ -268,6 +287,26 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
     return DateTime(date.year, date.month, date.day, time.hour, time.minute);
   }
 
+  Future<void> _pickInvitees() async {
+    final selected = await showInviteParticipants(
+      context: context,
+      excludedIds: const <String>{},
+      initiallySelectedIds: _invited.map((person) => person.id).toSet(),
+    );
+    if (selected == null || !mounted) {
+      return;
+    }
+    setState(() {
+      _invited
+        ..clear()
+        ..addAll(selected);
+    });
+  }
+
+  void _removeInvitee(DirectoryPerson person) {
+    setState(() => _invited.remove(person));
+  }
+
   void _submit() {
     final name = _nameController.text.trim();
     if (name.isEmpty) {
@@ -275,19 +314,28 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
       return;
     }
 
-    final endsAt = _endsAt;
-    if (endsAt == null) {
-      setState(() => _scheduleError = 'Выберите дату и время завершения');
-      return;
-    }
-    if (!endsAt.isAfter(DateTime.now())) {
-      setState(
-        () => _scheduleError = 'Нельзя выбрать дату и время в прошлом',
-      );
-      return;
+    DateTime? endsAt;
+    if (!_indefinite) {
+      endsAt = _endsAt;
+      if (endsAt == null) {
+        setState(() => _scheduleError = 'Выберите дату и время завершения');
+        return;
+      }
+      if (!endsAt.isAfter(DateTime.now())) {
+        setState(
+          () => _scheduleError = 'Нельзя выбрать дату и время в прошлом',
+        );
+        return;
+      }
     }
 
-    Navigator.of(context).pop(_GroupDraft(name: name, endsAt: endsAt));
+    Navigator.of(context).pop(
+      _GroupDraft(
+        name: name,
+        endsAt: endsAt,
+        invited: List<DirectoryPerson>.of(_invited),
+      ),
+    );
   }
 
   @override
@@ -322,9 +370,28 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
                 }
               },
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 4),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              value: _indefinite,
+              title: const Text('Бессрочная группа'),
+              subtitle: Text(
+                'Группа не завершится автоматически по времени',
+                style: textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              onChanged: (value) {
+                setState(() {
+                  _indefinite = value ?? false;
+                  _scheduleError = null;
+                });
+              },
+            ),
+            const SizedBox(height: 4),
             OutlinedButton.icon(
-              onPressed: _pickDate,
+              onPressed: _indefinite ? null : _pickDate,
               icon: const Icon(Icons.calendar_today),
               label: Text(
                 _date == null
@@ -334,7 +401,7 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
             ),
             const SizedBox(height: 12),
             OutlinedButton.icon(
-              onPressed: _pickTime,
+              onPressed: _indefinite ? null : _pickTime,
               icon: const Icon(Icons.schedule),
               label: Text(
                 _time == null
@@ -342,13 +409,13 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
                     : 'Время завершения: ${formatGroupTime(_time!)}',
               ),
             ),
-            if (_scheduleError != null) ...[
+            if (!_indefinite && _scheduleError != null) ...[
               const SizedBox(height: 8),
               Text(
                 _scheduleError!,
                 style: textTheme.bodyMedium?.copyWith(color: colorScheme.error),
               ),
-            ] else if (endsAt != null) ...[
+            ] else if (!_indefinite && endsAt != null) ...[
               const SizedBox(height: 8),
               Text(
                 'Активно до: ${formatGroupDateTime(endsAt)}',
@@ -357,6 +424,46 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
                 ),
               ),
             ],
+            const SizedBox(height: 20),
+            Text('Участники', style: textTheme.titleMedium),
+            const SizedBox(height: 4),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: CircleAvatar(child: Text(memberInitials('Вы'))),
+              title: const Text('Вы — организатор'),
+            ),
+            OutlinedButton.icon(
+              onPressed: _pickInvitees,
+              icon: const Icon(Icons.person_add_alt_1_outlined),
+              label: const Text('Пригласить участников'),
+            ),
+            if (_invited.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'Пока никто не приглашён',
+                  style: textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              )
+            else
+              for (final person in _invited)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(person.name),
+                  subtitle: Text(
+                    'Ожидает ответа',
+                    style: textTheme.bodyMedium?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  trailing: IconButton(
+                    tooltip: 'Убрать',
+                    onPressed: () => _removeInvitee(person),
+                    icon: const Icon(Icons.close),
+                  ),
+                ),
             const SizedBox(height: 20),
             Row(
               children: [
@@ -381,3 +488,4 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
     );
   }
 }
+

@@ -38,10 +38,23 @@ class GroupCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 8),
-              Text(
-                'Активно до: ${group.activeUntilLabel}',
-                style: textTheme.bodyLarge,
-              ),
+              if (group.isIndefinite)
+                Row(
+                  children: [
+                    Icon(
+                      Icons.all_inclusive,
+                      size: 18,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 6),
+                    Text('Бессрочная', style: textTheme.bodyLarge),
+                  ],
+                )
+              else
+                Text(
+                  'Активно до: ${group.activeUntilLabel}',
+                  style: textTheme.bodyLarge,
+                ),
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -53,15 +66,18 @@ class GroupCard extends StatelessWidget {
                         : colorScheme.onSurfaceVariant,
                   ),
                   const SizedBox(width: 6),
-                  Text(
-                    participating ? 'Участвую' : 'Покинул группу',
-                    style: textTheme.bodyMedium?.copyWith(
-                      color: participating
-                          ? colorScheme.primary
-                          : colorScheme.onSurfaceVariant,
+                  Expanded(
+                    child: Text(
+                      participating ? 'Участвую' : 'Покинул группу',
+                      overflow: TextOverflow.ellipsis,
+                      style: textTheme.bodyMedium?.copyWith(
+                        color: participating
+                            ? colorScheme.primary
+                            : colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
-                  const Spacer(),
+                  const SizedBox(width: 8),
                   Icon(
                     Icons.people_outline,
                     size: 18,
@@ -69,13 +85,25 @@ class GroupCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    membersLabel(group.memberCount),
+                    'Участников: ${group.activeMemberCount}',
                     style: textTheme.bodyMedium?.copyWith(
                       color: colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ],
               ),
+              if (group.invitedCount > 0) ...[
+                const SizedBox(height: 6),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    'Приглашены: ${group.invitedCount}',
+                    style: textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

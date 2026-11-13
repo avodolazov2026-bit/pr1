@@ -1,19 +1,24 @@
 import 'package:flutter/material.dart';
 
+import 'package:geo_groups/edit_group_screen.dart';
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/group_map_screen.dart';
 
-class GroupScreen extends StatelessWidget {
+class GroupScreen extends StatefulWidget {
   const GroupScreen({
     super.key,
-    required this.name,
-    required this.activeUntil,
-    required this.members,
+    required this.group,
+    this.onChanged,
   });
 
-  final String name;
-  final String activeUntil;
-  final List<GroupMember> members;
+  final GeoGroup group;
+  final VoidCallback? onChanged;
+
+  @override
+  State<GroupScreen> createState() => _GroupScreenState();
+}
+
+class _GroupScreenState extends State<GroupScreen> {
 
   Future<void> _confirmLeave(BuildContext context) async {
     final confirmed = await showDialog<bool>(
@@ -43,32 +48,66 @@ class GroupScreen extends StatelessWidget {
       return;
     }
 
-    for (final member in members) {
+    for (final member in widget.group.members) {
       if (member.isCurrentUser) {
-        member.hasLeftGroup = true;
+        member.status = MembershipStatus.left;
       }
     }
-    Navigator.of(context).pop(name);
+    widget.onChanged?.call();
+    Navigator.of(context).pop(widget.group.name);
+  }
+
+  Future<void> _edit() async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (context) => EditGroupScreen(group: widget.group),
+      ),
+    );
+    if (saved != true || !mounted) {
+      return;
+    }
+    setState(() {});
+    widget.onChanged?.call();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Изменения сохранены')),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
-    final visibleMembers = members.where(
-      (member) => !member.isCurrentUser || member.hasLeftGroup,
+    final group = widget.group;
+    final endsAt = group.endsAt;
+    final canEdit = group.isActive && group.currentUserIsActiveOrganizer;
+    final participants = group.members.where(
+      (member) =>
+          member.status == MembershipStatus.active && !member.isCurrentUser,
     );
+    final invited = group.members
+        .where((member) => member.status == MembershipStatus.invited)
+        .toList();
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(name),
+        title: Text(group.name),
+        actions: [
+          if (canEdit)
+            IconButton(
+              tooltip: 'Редактировать',
+              onPressed: _edit,
+              icon: const Icon(Icons.edit_outlined),
+            ),
+        ],
       ),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: [
             Text(
-              'Активно до: $activeUntil',
+              endsAt == null
+                  ? 'Срок действия: бессрочно'
+                  : 'Активно до: ${formatGroupDateTime(endsAt)}',
               style: textTheme.bodyLarge,
             ),
             const SizedBox(height: 24),
@@ -81,27 +120,36 @@ class GroupScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            for (final member in visibleMembers)
+            for (final member in participants)
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: Opacity(
-                  opacity: member.hasLeftGroup ? 0.45 : 1,
-                  child: CircleAvatar(
-                    child: Text(member.name.substring(0, 1)),
-                  ),
+                leading: CircleAvatar(
+                  child: Text(memberInitials(member.name)),
                 ),
                 title: Text(member.name),
-                trailing: Text(
-                  member.hasLeftGroup
-                      ? 'Покинул группу'
-                      : '${member.distanceMeters} м',
-                  style: member.hasLeftGroup
-                      ? textTheme.bodyMedium?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                        )
-                      : null,
-                ),
+                trailing: member.distanceMeters == null
+                    ? null
+                    : Text('${member.distanceMeters} м'),
               ),
+            if (invited.isNotEmpty) ...[
+              const SizedBox(height: 24),
+              Text('Приглашены', style: textTheme.titleMedium),
+              const SizedBox(height: 8),
+              for (final member in invited)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    child: Text(memberInitials(member.name)),
+                  ),
+                  title: Text(member.name),
+                  trailing: Text(
+                    'Ожидает ответа',
+                    style: textTheme.bodyMedium?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+            ],
           ],
         ),
       ),

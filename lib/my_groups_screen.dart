@@ -16,9 +16,12 @@ class _MyGroupsScreenState extends State<MyGroupsScreen> {
     final leftGroupName = await Navigator.of(context).push<String>(
       MaterialPageRoute<String>(
         builder: (context) => GroupScreen(
-          name: group.name,
-          activeUntil: group.activeUntilLabel,
-          members: group.members,
+          group: group,
+          onChanged: () {
+            if (mounted) {
+              setState(() {});
+            }
+          },
         ),
       ),
     );
