@@ -57,6 +57,38 @@ class _GroupScreenState extends State<GroupScreen> {
     Navigator.of(context).pop(widget.group.name);
   }
 
+  Future<void> _confirmEnd() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        final errorColor = Theme.of(dialogContext).colorScheme.error;
+        return AlertDialog(
+          title: const Text('Завершить группу?'),
+          content: const Text(
+            'Обмен геолокацией для всех участников будет остановлен. Завершённую группу нельзя будет изменить или восстановить.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Отмена'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: TextButton.styleFrom(foregroundColor: errorColor),
+              child: const Text('Завершить группу'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+    GroupsStore.instance.endGroup(widget.group);
+    setState(() {});
+    widget.onChanged?.call();
+  }
+
   Future<void> _edit() async {
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
@@ -80,6 +112,10 @@ class _GroupScreenState extends State<GroupScreen> {
     final group = widget.group;
     final endsAt = group.endsAt;
     final canEdit = group.isActive && group.currentUserIsActiveOrganizer;
+    final canEnd = canEdit;
+    final canLeave = group.isActive &&
+        group.currentUserIsActiveMember &&
+        !group.currentUserIsActiveOrganizer;
     final participants = group.members.where(
       (member) =>
           member.status == MembershipStatus.active && !member.isCurrentUser,
@@ -105,10 +141,15 @@ class _GroupScreenState extends State<GroupScreen> {
           padding: const EdgeInsets.all(24),
           children: [
             Text(
-              endsAt == null
-                  ? 'Срок действия: бессрочно'
-                  : 'Активно до: ${formatGroupDateTime(endsAt)}',
-              style: textTheme.bodyLarge,
+              group.isActive
+                  ? (endsAt == null
+                      ? 'Срок действия: бессрочно'
+                      : 'Активно до: ${formatGroupDateTime(endsAt)}')
+                  : 'Группа завершена',
+              style: textTheme.bodyLarge?.copyWith(
+                color: group.isActive ? null : colorScheme.error,
+                fontWeight: group.isActive ? null : FontWeight.w600,
+              ),
             ),
             const SizedBox(height: 24),
             Text('Участники', style: textTheme.titleMedium),
@@ -153,38 +194,46 @@ class _GroupScreenState extends State<GroupScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              FilledButton.icon(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (context) => const GroupMapScreen(),
+      bottomNavigationBar: group.isActive
+          ? SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (context) => const GroupMapScreen(),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.map),
+                      label: const Text('Открыть карту'),
                     ),
-                  );
-                },
-                icon: const Icon(Icons.map),
-                label: const Text('Открыть карту'),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: () => _confirmLeave(context),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: colorScheme.error,
-                  side: BorderSide(color: colorScheme.error),
+                    if (canEnd || canLeave) ...[
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: canEnd
+                            ? _confirmEnd
+                            : () => _confirmLeave(context),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: colorScheme.error,
+                          side: BorderSide(color: colorScheme.error),
+                        ),
+                        icon: Icon(canEnd ? Icons.event_busy : Icons.logout),
+                        label: Text(
+                          canEnd ? 'Завершить группу' : 'Покинуть группу',
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-                icon: const Icon(Icons.logout),
-                label: const Text('Покинуть группу'),
               ),
-            ],
-          ),
-        ),
-      ),
+            )
+          : null,
     );
   }
 }

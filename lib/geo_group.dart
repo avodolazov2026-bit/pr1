@@ -78,14 +78,21 @@ class GeoGroup {
     required this.endsAt,
     required this.members,
     this.createdByUserId,
-  });
+    String? qrInviteToken,
+  }) : qrInviteToken = qrInviteToken ?? 'qr-$id';
 
   final String id;
   String name;
   final DateTime createdAt;
 
+  /// Локальный токен QR-приглашения. Создаётся один раз и не меняется при редактировании.
+  final String qrInviteToken;
+
   /// null — группа бессрочная и не завершается по времени.
   DateTime? endsAt;
+
+  /// Организатор завершил группу раньше срока. Объект и приглашения сохраняются.
+  bool endedByOrganizer = false;
   final List<GroupMember> members;
 
   /// Кто создал группу. Общий список групп не делится по пользователям.
@@ -126,6 +133,9 @@ class GeoGroup {
     required DateTime? endsAt,
     required List<GroupMember> members,
   }) {
+    if (!isActive) {
+      return 'Завершённую группу нельзя изменить.';
+    }
     final trimmed = name.trim();
     if (trimmed.isEmpty) {
       return 'Введите название группы';
@@ -156,6 +166,9 @@ class GeoGroup {
   bool get isIndefinite => endsAt == null;
 
   bool get isActive {
+    if (endedByOrganizer) {
+      return false;
+    }
     final endsAt = this.endsAt;
     if (endsAt == null) {
       return true;
@@ -209,6 +222,9 @@ class GroupsStore {
     return '$prefix-$_sequence';
   }
 
+  /// Уникальный токен QR для новой группы. Повторно при редактировании не вызывается.
+  String nextQrInviteToken() => nextId('qr');
+
   void addGroup(GeoGroup group) {
     groups.insert(0, group);
   }
@@ -224,6 +240,31 @@ class GroupsStore {
 
   List<GeoGroup> get myGroups =>
       groups.where((group) => group.currentUserIsActiveMember).toList();
+
+  /// Завершает группу для всех. Участник без роли организатора сделать этого не может.
+  bool endGroup(GeoGroup group) {
+    if (!group.isActive || !group.currentUserIsActiveOrganizer) {
+      return false;
+    }
+    group.endedByOrganizer = true;
+    return true;
+  }
+
+  /// Ожидающие приглашения конкретного пользователя только в активные группы.
+  int pendingInvitationCountFor(String userId) {
+    var count = 0;
+    for (final invitation in invitations) {
+      if (invitation.inviteeId != userId ||
+          invitation.status != InvitationStatus.pending) {
+        continue;
+      }
+      final group = groupById(invitation.groupId);
+      if (group != null && group.isActive) {
+        count += 1;
+      }
+    }
+    return count;
+  }
 
   List<GroupInvitation> get incomingPending {
     final result = invitations
@@ -375,6 +416,13 @@ String? validateEndsAtUpdate({
     return 'Нельзя выбрать дату и время в прошлом';
   }
   return null;
+}
+
+/// Локальная схема приглашения. Позже её можно заменить на HTTPS-ссылку.
+String buildGroupInvitePayload(GeoGroup group) {
+  return 'geo-groups://join'
+      '?groupId=${Uri.encodeQueryComponent(group.id)}'
+      '&inviteToken=${Uri.encodeQueryComponent(group.qrInviteToken)}';
 }
 
 String memberInitials(String name) {

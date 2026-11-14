@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import 'package:geo_groups/geo_group.dart';
 
@@ -12,20 +13,49 @@ class QrInviteScreen extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
     final endsAt = group.endsAt;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final qrSize = (screenWidth - 96).clamp(180.0, 300.0);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Приглашение по QR-коду'),
+        title: const Text('QR-код приглашения'),
       ),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: [
-            Text(group.name, style: textTheme.titleLarge),
-            const SizedBox(height: 8),
+            Center(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: colorScheme.outlineVariant),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: QrImageView(
+                    data: buildGroupInvitePayload(group),
+                    version: QrVersions.auto,
+                    size: qrSize,
+                    backgroundColor: Colors.white,
+                    errorCorrectionLevel: QrErrorCorrectLevel.M,
+                    eyeStyle: const QrEyeStyle(
+                      eyeShape: QrEyeShape.square,
+                      color: Colors.black,
+                    ),
+                    dataModuleStyle: const QrDataModuleStyle(
+                      dataModuleShape: QrDataModuleShape.square,
+                      color: Colors.black,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
             Text(
-              'Организатор: ${group.organizerName}',
-              style: textTheme.bodyLarge,
+              group.name,
+              style: textTheme.titleLarge,
+              textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
@@ -33,38 +63,13 @@ class QrInviteScreen extends StatelessWidget {
                   ? 'Бессрочная группа'
                   : 'До ${formatGroupDateTime(endsAt)}',
               style: textTheme.bodyLarge,
+              textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 24),
-            Center(
-              child: Container(
-                width: 240,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: colorScheme.outlineVariant),
-                ),
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.qr_code_2_outlined,
-                      size: 96,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'QR-код будет доступен после подключения сервера',
-                      style: textTheme.bodyMedium,
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
             Text(
-              'Участник сможет отсканировать код, просмотреть приглашение и самостоятельно подтвердить присоединение.',
+              'Покажите этот код человеку, которого хотите пригласить в группу.',
               style: textTheme.bodyLarge,
+              textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
             DecoratedBox(
@@ -75,7 +80,7 @@ class QrInviteScreen extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Text(
-                  'Сканирование кода не предоставляет доступ к геолокации. Участник должен принять приглашение.',
+                  'Код не передаёт вашу геолокацию. Присоединение к группе потребует отдельного подтверждения.',
                   style: textTheme.bodyMedium?.copyWith(
                     color: colorScheme.onSecondaryContainer,
                   ),
@@ -83,6 +88,15 @@ class QrInviteScreen extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+          child: FilledButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Готово'),
+          ),
         ),
       ),
     );

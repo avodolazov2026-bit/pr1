@@ -56,6 +56,7 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen> {
       createdAt: DateTime.now(),
       endsAt: draft.endsAt,
       createdByUserId: currentDemoUserId,
+      qrInviteToken: GroupsStore.instance.nextQrInviteToken(),
       members: [
         GroupMember(
           id: currentDemoUser.id,

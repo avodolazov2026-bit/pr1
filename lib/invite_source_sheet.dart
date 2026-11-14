@@ -55,16 +55,23 @@ Future<List<DirectoryPerson>?> showInviteParticipants({
       );
       return null;
     case _InviteChannel.qrCode:
-      if (group == null) {
+      if (group == null || group.qrInviteToken.isEmpty) {
         await _showNotice(
           context,
           title: 'QR-код группы',
-          message:
-              'Сначала создайте группу, затем можно будет пригласить участника по QR-коду.',
+          message: 'Сначала сохраните группу, чтобы создать QR-код приглашения.',
         );
         return null;
       }
-      if (!group.isActive || !context.mounted) {
+      if (!group.isActive) {
+        await _showNotice(
+          context,
+          title: 'QR-код группы',
+          message: 'В завершённую группу нельзя приглашать участников.',
+        );
+        return null;
+      }
+      if (!group.currentUserIsActiveOrganizer || !context.mounted) {
         return null;
       }
       await Navigator.of(context).push<void>(
@@ -106,7 +113,10 @@ class _InviteSourceSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    final savedAndEnded = group != null && !group!.isActive;
+    final currentGroup = group;
+    final savedAndEnded = currentGroup != null && !currentGroup.isActive;
+    final canOpenQr = currentGroup == null ||
+        (currentGroup.isActive && currentGroup.currentUserIsActiveOrganizer);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
@@ -132,17 +142,17 @@ class _InviteSourceSheet extends StatelessWidget {
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,
-            enabled: !savedAndEnded,
+            enabled: canOpenQr && !savedAndEnded,
             leading: const Icon(Icons.qr_code_2_outlined),
             title: const Text('QR-код группы'),
             subtitle: Text(
               savedAndEnded
-                  ? 'Группа завершена, приглашение недоступно'
+                  ? 'В завершённую группу нельзя приглашать участников'
                   : 'Показать код для присоединения',
             ),
-            onTap: savedAndEnded
-                ? null
-                : () => Navigator.of(context).pop(_InviteChannel.qrCode),
+            onTap: canOpenQr && !savedAndEnded
+                ? () => Navigator.of(context).pop(_InviteChannel.qrCode)
+                : null,
           ),
         ],
       ),

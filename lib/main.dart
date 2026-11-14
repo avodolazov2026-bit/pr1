@@ -59,6 +59,15 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Future<void> _openScreen(Widget screen) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (context) => screen),
+    );
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
@@ -102,41 +111,72 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 32),
               FilledButton(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (context) => const CreatedGroupsScreen(),
-                    ),
-                  );
-                },
+                onPressed: () => _openScreen(const CreatedGroupsScreen()),
                 child: const Text('Создать группу'),
               ),
               const SizedBox(height: 12),
               OutlinedButton(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (context) => const InvitationsScreen(),
-                    ),
-                  );
-                },
-                child: const Text('Присоединиться по приглашению'),
+                onPressed: () => _openScreen(const InvitationsScreen()),
+                child: _JoinInvitationLabel(
+                  count: GroupsStore.instance.pendingInvitationCountFor(
+                    currentDemoUserId,
+                  ),
+                ),
               ),
               const SizedBox(height: 12),
               OutlinedButton(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (context) => const MyGroupsScreen(),
-                    ),
-                  );
-                },
+                onPressed: () => _openScreen(const MyGroupsScreen()),
                 child: const Text('Мои группы'),
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _JoinInvitationLabel extends StatelessWidget {
+  const _JoinInvitationLabel({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final label = count > 99 ? '99+' : '$count';
+
+    return Row(
+      children: [
+        const Expanded(
+          child: Text(
+            'Присоединиться по приглашению',
+            textAlign: TextAlign.center,
+          ),
+        ),
+        if (count > 0)
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: colorScheme.error,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Center(
+                  child: Text(
+                    label,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: colorScheme.onError,
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
