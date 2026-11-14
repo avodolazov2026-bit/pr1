@@ -20,13 +20,17 @@ void main() {
     bool endedByOrganizer = false,
     String organizerId = 'maria-organizer',
   }) {
+    final now = DateTime.now();
     final group = GeoGroup(
       id: id,
       name: 'Встреча $id',
-      createdAt: DateTime.now(),
+      createdAt: now,
+      startsAt: active
+          ? now.subtract(const Duration(minutes: 5))
+          : now.subtract(const Duration(hours: 4)),
       endsAt: active
-          ? DateTime.now().add(const Duration(days: 2))
-          : DateTime.now().subtract(const Duration(hours: 3)),
+          ? now.add(const Duration(days: 2))
+          : now.subtract(const Duration(hours: 3)),
       qrInviteToken: token,
       members: [
         GroupMember(
@@ -60,6 +64,7 @@ void main() {
       id: 'walk id',
       name: 'Прогулка',
       createdAt: DateTime.now(),
+      startsAt: DateTime.now().subtract(const Duration(minutes: 5)),
       endsAt: DateTime.now().add(const Duration(days: 1)),
       qrInviteToken: 'token value',
       members: [

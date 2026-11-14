@@ -12,7 +12,7 @@ class QrInviteScreen extends StatelessWidget {
   bool get _canCopy {
     final saved = GroupsStore.instance.groupById(group.id);
     return identical(saved, group) &&
-        group.isActive &&
+        !group.isFinished &&
         group.qrInviteToken.isNotEmpty &&
         group.currentUserIsActiveOrganizer;
   }
@@ -36,7 +36,6 @@ class QrInviteScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
-    final endsAt = group.endsAt;
     final canCopy = _canCopy;
     final screenWidth = MediaQuery.sizeOf(context).width;
     final qrSize = (screenWidth - 96).clamp(180.0, 300.0);
@@ -82,9 +81,7 @@ class QrInviteScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              endsAt == null
-                  ? 'Бессрочная группа'
-                  : 'До ${formatGroupDateTime(endsAt)}',
+              group.scheduleSummary,
               style: textTheme.bodyLarge,
               textAlign: TextAlign.center,
             ),

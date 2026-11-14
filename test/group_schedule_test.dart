@@ -1,0 +1,520 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:geo_groups/geo_group.dart';
+import 'package:geo_groups/group_invitation.dart';
+import 'package:geo_groups/group_map_screen.dart';
+import 'package:geo_groups/group_screen.dart';
+import 'package:geo_groups/my_groups_screen.dart';
+import 'package:geo_groups/qr_invite_screen.dart';
+
+void main() {
+  setUp(() {
+    currentDemoUserId = defaultDemoUserId;
+  });
+
+  GeoGroup buildGroup({
+    required String id,
+    required DateTime startsAt,
+    DateTime? endsAt,
+    bool endedByOrganizer = false,
+    String memberId = defaultDemoUserId,
+    MemberRole role = MemberRole.organizer,
+  }) {
+    final group = GeoGroup(
+      id: id,
+      name: 'Группа $id',
+      createdAt: DateTime.now().subtract(const Duration(days: 1)),
+      startsAt: startsAt,
+      endsAt: endsAt,
+      createdByUserId: defaultDemoUserId,
+      qrInviteToken: 'token-$id',
+      members: [
+        GroupMember(
+          id: memberId,
+          name: memberId == defaultDemoUserId ? 'Вы' : 'Участник',
+          role: role,
+          status: MembershipStatus.active,
+        ),
+      ],
+    );
+    if (endedByOrganizer) {
+      group.endedByOrganizer = true;
+      group.endedAt = DateTime.now();
+    }
+    return group;
+  }
+
+  test(
+    'statuses stay exclusive for upcoming, active and finished groups',
+    () async {
+      final now = DateTime.now();
+      final upcoming = buildGroup(
+        id: 'status-upcoming',
+        startsAt: now.add(const Duration(days: 1)),
+      );
+      expect(upcoming.isUpcoming, isTrue);
+      expect(upcoming.isActive, isFalse);
+      expect(upcoming.isFinished, isFalse);
+      expect(upcoming.canUseMap, isFalse);
+
+      final active = buildGroup(
+        id: 'status-active',
+        startsAt: now.subtract(const Duration(hours: 1)),
+        endsAt: now.add(const Duration(hours: 2)),
+      );
+      expect(active.isActive, isTrue);
+      expect(active.canUseMap, isTrue);
+      expect(active.isUpcoming, isFalse);
+      expect(active.isFinished, isFalse);
+
+      final expired = buildGroup(
+        id: 'status-expired',
+        startsAt: now.subtract(const Duration(hours: 3)),
+        endsAt: now.subtract(const Duration(hours: 1)),
+      );
+      expect(expired.isFinished, isTrue);
+      expect(expired.canUseMap, isFalse);
+      expect(expired.statusBadge, 'Истекла');
+
+      final stopped = buildGroup(
+        id: 'status-stopped',
+        startsAt: now.subtract(const Duration(hours: 1)),
+        endsAt: now.add(const Duration(days: 1)),
+        endedByOrganizer: true,
+      );
+      expect(stopped.isFinished, isTrue);
+      expect(stopped.isActive, isFalse);
+      expect(stopped.scheduleSummary, 'Завершена организатором');
+
+      final cancelled = buildGroup(
+        id: 'status-cancelled',
+        startsAt: now.add(const Duration(days: 2)),
+        endedByOrganizer: true,
+      );
+      expect(cancelled.isFinished, isTrue);
+      expect(cancelled.isUpcoming, isFalse);
+      expect(cancelled.statusBadge, 'Отменена');
+      expect(cancelled.scheduleSummary, contains('Была запланирована на'));
+
+      expect(
+        validateGroupSchedule(
+          originalStartsAt: now.add(const Duration(days: 1)),
+          nextStartsAt: now.add(const Duration(days: 1)),
+          originalEndsAt: now.add(const Duration(days: 2)),
+          nextEndsAt: now.add(const Duration(days: 1)),
+          upcoming: true,
+        ),
+        'Окончание должно быть позже начала',
+      );
+      expect(
+        validateGroupSchedule(
+          originalStartsAt: now.add(const Duration(days: 2)),
+          nextStartsAt: now.add(const Duration(days: 2)),
+          originalEndsAt: now.add(const Duration(days: 1)),
+          nextEndsAt: now.add(const Duration(days: 1)),
+          upcoming: true,
+        ),
+        'Окончание должно быть позже начала',
+      );
+
+      final becomingActive = buildGroup(
+        id: 'status-soon',
+        startsAt: DateTime.now().add(const Duration(milliseconds: 80)),
+      );
+      expect(becomingActive.isUpcoming, isTrue);
+      expect(becomingActive.endsAt, isNull);
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      expect(becomingActive.isActive, isTrue);
+      expect(becomingActive.isUpcoming, isFalse);
+      expect(becomingActive.isFinished, isFalse);
+      expect(becomingActive.canUseMap, isTrue);
+    },
+  );
+
+  test('cancellation stays cancelled after the original start time', () async {
+    final startsAt = DateTime.now().add(const Duration(milliseconds: 250));
+    final cancelled = buildGroup(id: 'cancel-sticky', startsAt: startsAt);
+    expect(GroupsStore.instance.endGroup(cancelled), isTrue);
+    expect(cancelled.isFinished, isTrue);
+    expect(cancelled.wasCancelledBeforeStart, isTrue);
+    expect(cancelled.statusBadge, 'Отменена');
+    expect(cancelled.scheduleSummary, contains('Была запланирована на'));
+
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    expect(DateTime.now().isBefore(cancelled.startsAt), isFalse);
+    expect(cancelled.isFinished, isTrue);
+    expect(cancelled.wasCancelledBeforeStart, isTrue);
+    expect(cancelled.statusBadge, 'Отменена');
+    expect(
+      cancelled.scheduleSummary,
+      'Была запланирована на ${formatGroupDateTime(cancelled.startsAt)}',
+    );
+
+    final finished = buildGroup(
+      id: 'finished-by-organizer',
+      startsAt: DateTime.now().subtract(const Duration(hours: 2)),
+      endsAt: DateTime.now().add(const Duration(days: 1)),
+    );
+    expect(GroupsStore.instance.endGroup(finished), isTrue);
+    expect(finished.wasCancelledBeforeStart, isFalse);
+    expect(finished.statusBadge, 'Завершена');
+    expect(finished.scheduleSummary, 'Завершена организатором');
+
+    final legacy = buildGroup(
+      id: 'legacy-ended',
+      startsAt: DateTime.now().add(const Duration(days: 1)),
+    );
+    legacy.endedByOrganizer = true;
+    expect(legacy.endedAt, isNull);
+    expect(legacy.wasCancelledBeforeStart, isFalse);
+    expect(legacy.statusBadge, 'Завершена');
+  });
+
+  test('start time can move only while the group is upcoming', () {
+    final now = DateTime.now();
+    final start = now.add(const Duration(days: 2));
+    final group = buildGroup(
+      id: 'move-start',
+      startsAt: start,
+      endsAt: start.add(const Duration(hours: 3)),
+      memberId: defaultDemoUserId,
+    );
+    group.members.add(
+      GroupMember(
+        id: 'anna-smirnova',
+        name: 'Анна Смирнова',
+        status: MembershipStatus.invited,
+      ),
+    );
+    GroupsStore.instance.addGroup(group);
+    GroupsStore.instance.syncInvitations(group);
+    final invitation = GroupsStore.instance.invitations.last;
+    final memberIds = group.members.map((member) => member.id).toList();
+
+    final nextStart = now.add(const Duration(days: 5));
+    expect(
+      group.updateDetails(
+        name: group.name,
+        startsAt: nextStart,
+        endsAt: nextStart.add(const Duration(hours: 2)),
+        members: List<GroupMember>.of(group.members),
+      ),
+      isNull,
+    );
+    expect(group.startsAt, nextStart);
+    expect(group.members.map((member) => member.id), memberIds);
+    expect(invitation.status, InvitationStatus.pending);
+
+    expect(
+      group.updateDetails(
+        name: group.name,
+        startsAt: now.subtract(const Duration(hours: 1)),
+        endsAt: now.add(const Duration(hours: 2)),
+        members: List<GroupMember>.of(group.members),
+      ),
+      'Начало группы должно быть в будущем',
+    );
+    expect(group.startsAt, nextStart);
+
+    final active = buildGroup(
+      id: 'locked-start',
+      startsAt: now.subtract(const Duration(hours: 2)),
+      endsAt: now.add(const Duration(days: 1)),
+    );
+    final lockedStart = active.startsAt;
+    expect(
+      active.updateDetails(
+        name: active.name,
+        startsAt: now.add(const Duration(days: 1)),
+        endsAt: active.endsAt,
+        members: List<GroupMember>.of(active.members),
+      ),
+      'Время начала активной группы нельзя изменить.',
+    );
+    expect(active.startsAt, lockedStart);
+    expect(
+      active.updateDetails(
+        name: active.name,
+        startsAt: active.startsAt,
+        endsAt: active.startsAt,
+        members: List<GroupMember>.of(active.members),
+      ),
+      'Окончание должно быть позже начала',
+    );
+    expect(
+      active.updateDetails(
+        name: active.name,
+        startsAt: active.startsAt,
+        endsAt: now.add(const Duration(days: 3)),
+        members: List<GroupMember>.of(active.members),
+      ),
+      'Нельзя продлить срок группы: это потребует нового согласия участников.',
+    );
+    expect(active.endsAt!.isBefore(now.add(const Duration(days: 2))), isTrue);
+  });
+
+  test('upcoming QR can be claimed and accepted without opening the map', () {
+    final now = DateTime.now();
+    final group = buildGroup(
+      id: 'qr-upcoming',
+      startsAt: now.add(const Duration(days: 1)),
+      endsAt: now.add(const Duration(days: 2)),
+      memberId: 'maria-organizer',
+      role: MemberRole.organizer,
+    );
+    GroupsStore.instance.addGroup(group);
+    currentDemoUserId = 'mikhail-ivanov';
+    final store = GroupsStore.instance;
+
+    expect(
+      store.claimQrInvitation(buildGroupInvitePayload(group)),
+      QrInviteClaimResult.added,
+    );
+    expect(
+      messageForQrInviteClaim(QrInviteClaimResult.added),
+      isNot('Срок действия приглашения завершён'),
+    );
+    final invitation = store.invitations.last;
+    expect(store.acceptInvitation(invitation), InvitationAcceptResult.joined);
+    expect(group.currentUserIsActiveMember, isTrue);
+    expect(group.canUseMap, isFalse);
+
+    final cancelled = buildGroup(
+      id: 'qr-cancelled',
+      startsAt: now.add(const Duration(days: 3)),
+      memberId: 'maria-organizer',
+      role: MemberRole.organizer,
+    );
+    store.addGroup(cancelled);
+    currentDemoUserId = 'elena-kuznetsova';
+    expect(
+      store.claimQrInvitation(buildGroupInvitePayload(cancelled)),
+      QrInviteClaimResult.added,
+    );
+    final pending = store.invitations.last;
+    currentDemoUserId = 'maria-organizer';
+    expect(store.endGroup(cancelled), isTrue);
+    expect(cancelled.statusBadge, 'Отменена');
+    expect(cancelled.isFinished, isTrue);
+    currentDemoUserId = pending.inviteeId;
+    expect(store.acceptInvitation(pending), InvitationAcceptResult.groupEnded);
+    currentDemoUserId = 'dmitry-petrov';
+    expect(
+      store.claimQrInvitation(buildGroupInvitePayload(cancelled)),
+      QrInviteClaimResult.inactive,
+    );
+    expect(
+      messageForQrInviteClaim(QrInviteClaimResult.inactive),
+      'Срок действия приглашения завершён',
+    );
+  });
+
+  testWidgets('my groups split into active, upcoming and finished sections', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    currentDemoUserId = 'schedule-only-user';
+    final now = DateTime.now();
+    final active = buildGroup(
+      id: 'section-active',
+      startsAt: now.subtract(const Duration(hours: 1)),
+      endsAt: now.add(const Duration(hours: 4)),
+      memberId: currentDemoUserId,
+      role: MemberRole.participant,
+    );
+    active.name = 'Секция активная';
+    final laterActive = buildGroup(
+      id: 'section-active-later',
+      startsAt: now.subtract(const Duration(hours: 2)),
+      endsAt: now.add(const Duration(days: 2)),
+      memberId: currentDemoUserId,
+      role: MemberRole.participant,
+    );
+    laterActive.name = 'Секция активная позже';
+    final indefinite = buildGroup(
+      id: 'section-open',
+      startsAt: now.subtract(const Duration(hours: 3)),
+      memberId: currentDemoUserId,
+      role: MemberRole.participant,
+    );
+    indefinite.name = 'Секция бессрочная';
+    final upcoming = buildGroup(
+      id: 'section-upcoming',
+      startsAt: now.add(const Duration(days: 3)),
+      memberId: currentDemoUserId,
+      role: MemberRole.participant,
+    );
+    upcoming.name = 'Секция запланированная';
+    final finished = buildGroup(
+      id: 'section-finished',
+      startsAt: now.subtract(const Duration(days: 2)),
+      endsAt: now.subtract(const Duration(hours: 5)),
+      memberId: currentDemoUserId,
+      role: MemberRole.participant,
+    );
+    finished.name = 'Секция завершённая';
+    GroupsStore.instance
+      ..addGroup(finished)
+      ..addGroup(upcoming)
+      ..addGroup(indefinite)
+      ..addGroup(laterActive)
+      ..addGroup(active);
+
+    await tester.pumpWidget(const MaterialApp(home: MyGroupsScreen()));
+
+    expect(find.text('Активные'), findsOneWidget);
+    expect(find.text('Запланированные'), findsOneWidget);
+    expect(find.text('Завершённые'), findsOneWidget);
+    expect(find.text('Запланирована'), findsOneWidget);
+    expect(find.textContaining('Начнётся'), findsOneWidget);
+    expect(find.text('Активна'), findsWidgets);
+    expect(
+      find.text('Истекла ${formatGroupDateTime(finished.endsAt!)}'),
+      findsOneWidget,
+    );
+    expect(find.text('Без срока окончания'), findsOneWidget);
+
+    final labels = tester
+        .widgetList<Text>(find.byType(Text))
+        .map((text) => text.data)
+        .whereType<String>()
+        .toList();
+    expect(
+      labels.indexOf('Активные'),
+      lessThan(labels.indexOf('Запланированные')),
+    );
+    expect(
+      labels.indexOf('Запланированные'),
+      lessThan(labels.indexOf('Завершённые')),
+    );
+    expect(
+      labels.indexOf('Секция активная'),
+      lessThan(labels.indexOf('Секция активная позже')),
+    );
+    expect(
+      labels.indexOf('Секция активная позже'),
+      lessThan(labels.indexOf('Секция бессрочная')),
+    );
+    expect(
+      labels.indexOf('Секция запланированная'),
+      greaterThan(labels.indexOf('Запланированные')),
+    );
+    expect(
+      labels.indexOf('Секция запланированная'),
+      lessThan(labels.indexOf('Завершённые')),
+    );
+    expect(find.text('Активна'), findsWidgets);
+    expect(
+      find.descendant(
+        of: find.widgetWithText(Card, 'Секция завершённая'),
+        matching: find.text('Активна'),
+      ),
+      findsNothing,
+    );
+  });
+
+  testWidgets('an empty upcoming section has no header', (tester) async {
+    currentDemoUserId = 'active-only-user';
+    final now = DateTime.now();
+    final group = buildGroup(
+      id: 'only-active',
+      startsAt: now.subtract(const Duration(minutes: 10)),
+      endsAt: now.add(const Duration(hours: 1)),
+      memberId: currentDemoUserId,
+      role: MemberRole.participant,
+    );
+    GroupsStore.instance.addGroup(group);
+
+    await tester.pumpWidget(const MaterialApp(home: MyGroupsScreen()));
+
+    expect(find.text('Активные'), findsOneWidget);
+    expect(find.text('Запланированные'), findsNothing);
+    expect(find.text('Завершённые'), findsNothing);
+  });
+
+  testWidgets('upcoming group hides the map and an active group keeps it', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    final upcoming = buildGroup(
+      id: 'screen-upcoming',
+      startsAt: now.add(const Duration(days: 1)),
+      endsAt: now.add(const Duration(days: 2)),
+    );
+    GroupsStore.instance.addGroup(upcoming);
+
+    await tester.pumpWidget(MaterialApp(home: GroupScreen(group: upcoming)));
+    expect(find.text('Открыть карту'), findsNothing);
+    expect(
+      find.text('Карта станет доступна после начала группы'),
+      findsOneWidget,
+    );
+    expect(find.text('Отменить группу'), findsOneWidget);
+    expect(find.text('Завершить группу'), findsNothing);
+    expect(find.byIcon(Icons.edit_outlined), findsOneWidget);
+
+    await tester.pumpWidget(MaterialApp(home: GroupMapScreen(group: upcoming)));
+    expect(
+      find.text('Карта участников будет добавлена на следующем этапе'),
+      findsNothing,
+    );
+    expect(
+      find.text('Карта станет доступна после начала группы'),
+      findsOneWidget,
+    );
+
+    final active = buildGroup(
+      id: 'screen-active',
+      startsAt: now.subtract(const Duration(hours: 1)),
+      endsAt: now.add(const Duration(hours: 3)),
+    );
+    await tester.pumpWidget(MaterialApp(home: GroupScreen(group: active)));
+    expect(find.text('Открыть карту'), findsOneWidget);
+    await tester.tap(find.text('Открыть карту'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Карта участников будет добавлена на следующем этапе'),
+      findsOneWidget,
+    );
+    Navigator.of(tester.element(find.text('Карта группы'))).pop();
+    await tester.pumpAndSettle();
+
+    final finished = buildGroup(
+      id: 'screen-finished',
+      startsAt: now.subtract(const Duration(hours: 4)),
+      endsAt: now.subtract(const Duration(hours: 1)),
+    );
+    await tester.pumpWidget(MaterialApp(home: GroupMapScreen(group: finished)));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Карта недоступна для завершённой группы'),
+      findsOneWidget,
+    );
+    expect(find.text('Открыть карту'), findsNothing);
+  });
+
+  testWidgets('organizer can copy a QR code of an upcoming saved group', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    final group = buildGroup(
+      id: 'copy-upcoming',
+      startsAt: now.add(const Duration(days: 1)),
+    );
+    GroupsStore.instance.addGroup(group);
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(MaterialApp(home: QrInviteScreen(group: group)));
+
+    expect(find.text('Скопировать код приглашения'), findsOneWidget);
+    expect(find.textContaining('Начнётся'), findsOneWidget);
+    expect(find.text('Срок действия приглашения завершён'), findsNothing);
+  });
+}

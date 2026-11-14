@@ -5,20 +5,14 @@ enum InvitationSource {
   link;
 
   String get incomingLabel => switch (this) {
-        InvitationSource.demoList => 'Приглашение от организатора',
-        InvitationSource.contacts => 'Приглашение из контактов',
-        InvitationSource.qrCode => 'Приглашение по QR-коду',
-        InvitationSource.link => 'Приглашение по ссылке',
-      };
+    InvitationSource.demoList => 'Приглашение от организатора',
+    InvitationSource.contacts => 'Приглашение из контактов',
+    InvitationSource.qrCode => 'Приглашение по QR-коду',
+    InvitationSource.link => 'Приглашение по ссылке',
+  };
 }
 
-enum InvitationStatus {
-  pending,
-  accepted,
-  declined,
-  revoked,
-  expired,
-}
+enum InvitationStatus { pending, accepted, declined, revoked, expired }
 
 class GroupInvitation {
   GroupInvitation({

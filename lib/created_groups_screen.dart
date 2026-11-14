@@ -54,6 +54,7 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen> {
       id: GroupsStore.instance.nextId('group'),
       name: draft.name,
       createdAt: DateTime.now(),
+      startsAt: draft.startsAt,
       endsAt: draft.endsAt,
       createdByUserId: currentDemoUserId,
       qrInviteToken: GroupsStore.instance.nextQrInviteToken(),
@@ -75,9 +76,8 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen> {
     GroupsStore.instance.addGroup(group);
     GroupsStore.instance.syncInvitations(group);
     setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Группа создана')),
-    );
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Группа создана')));
   }
 
   @override
@@ -87,9 +87,7 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen> {
     final groups = GroupsStore.instance.createdGroups(_period);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Созданные группы'),
-      ),
+      appBar: AppBar(title: const Text('Созданные группы')),
       body: SafeArea(
         child: Column(
           children: [
@@ -99,9 +97,7 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen> {
               onPressed: _addGroup,
               icon: const Icon(Icons.add),
               iconSize: 36,
-              style: IconButton.styleFrom(
-                fixedSize: const Size(72, 72),
-              ),
+              style: IconButton.styleFrom(fixedSize: const Size(72, 72)),
             ),
             TextButton(
               onPressed: _addGroup,
@@ -215,11 +211,13 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen> {
 class _GroupDraft {
   const _GroupDraft({
     required this.name,
+    required this.startsAt,
     required this.endsAt,
     required this.invited,
   });
 
   final String name;
+  final DateTime startsAt;
   final DateTime? endsAt;
   final List<DirectoryPerson> invited;
 }
@@ -233,12 +231,22 @@ class _NewGroupSheet extends StatefulWidget {
 
 class _NewGroupSheetState extends State<_NewGroupSheet> {
   final _nameController = TextEditingController();
-  DateTime? _date;
-  TimeOfDay? _time;
+  late DateTime _startDate;
+  late TimeOfDay _startTime;
+  DateTime? _endDate;
+  TimeOfDay? _endTime;
   bool _indefinite = false;
   final List<DirectoryPerson> _invited = <DirectoryPerson>[];
   String? _nameError;
   String? _scheduleError;
+
+  @override
+  void initState() {
+    super.initState();
+    final start = _roundedFutureStart(DateTime.now());
+    _startDate = DateTime(start.year, start.month, start.day);
+    _startTime = TimeOfDay(hour: start.hour, minute: start.minute);
+  }
 
   @override
   void dispose() {
@@ -246,12 +254,24 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
     super.dispose();
   }
 
-  Future<void> _pickDate() async {
+  DateTime _roundedFutureStart(DateTime now) {
+    final base = DateTime(now.year, now.month, now.day, now.hour, now.minute);
+    final remainder = base.minute % 5;
+    var result = base.add(
+      Duration(minutes: remainder == 0 ? 0 : 5 - remainder),
+    );
+    if (!result.isAfter(now)) {
+      result = result.add(const Duration(minutes: 5));
+    }
+    return result;
+  }
+
+  Future<void> _pickStartDate() async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final picked = await showDatePicker(
       context: context,
-      initialDate: _date ?? today,
+      initialDate: _startDate.isBefore(today) ? today : _startDate,
       firstDate: today,
       lastDate: DateTime(now.year + 2, now.month, now.day),
     );
@@ -259,28 +279,68 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
       return;
     }
     setState(() {
-      _date = picked;
+      _startDate = picked;
       _scheduleError = null;
     });
   }
 
-  Future<void> _pickTime() async {
+  Future<void> _pickStartTime() async {
     final picked = await showTimePicker(
       context: context,
-      initialTime: _time ?? TimeOfDay.now(),
+      initialTime: _startTime,
     );
     if (picked == null) {
       return;
     }
     setState(() {
-      _time = picked;
+      _startTime = picked;
       _scheduleError = null;
     });
   }
 
+  Future<void> _pickEndDate() async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _endDate ?? _startDate,
+      firstDate: today,
+      lastDate: DateTime(now.year + 2, now.month, now.day),
+    );
+    if (picked == null) {
+      return;
+    }
+    setState(() {
+      _endDate = picked;
+      _scheduleError = null;
+    });
+  }
+
+  Future<void> _pickEndTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _endTime ?? _startTime,
+    );
+    if (picked == null) {
+      return;
+    }
+    setState(() {
+      _endTime = picked;
+      _scheduleError = null;
+    });
+  }
+
+  DateTime get _startsAt => DateTime(
+    _startDate.year,
+    _startDate.month,
+    _startDate.day,
+    _startTime.hour,
+    _startTime.minute,
+  );
+
   DateTime? get _endsAt {
-    final date = _date;
-    final time = _time;
+    final date = _endDate;
+    final time = _endTime;
     if (date == null || time == null) {
       return null;
     }
@@ -314,6 +374,13 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
       return;
     }
 
+    final startsAt = _startsAt;
+    final now = DateTime.now();
+    if (!startsAt.isAfter(now)) {
+      setState(() => _scheduleError = 'Начало группы должно быть в будущем');
+      return;
+    }
+
     DateTime? endsAt;
     if (!_indefinite) {
       endsAt = _endsAt;
@@ -321,10 +388,8 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
         setState(() => _scheduleError = 'Выберите дату и время завершения');
         return;
       }
-      if (!endsAt.isAfter(DateTime.now())) {
-        setState(
-          () => _scheduleError = 'Нельзя выбрать дату и время в прошлом',
-        );
+      if (!endsAt.isAfter(startsAt)) {
+        setState(() => _scheduleError = 'Окончание должно быть позже начала');
         return;
       }
     }
@@ -332,6 +397,7 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
     Navigator.of(context).pop(
       _GroupDraft(
         name: name,
+        startsAt: startsAt,
         endsAt: endsAt,
         invited: List<DirectoryPerson>.of(_invited),
       ),
@@ -345,9 +411,7 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
     final endsAt = _endsAt;
 
     return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.viewInsetsOf(context).bottom,
-      ),
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
         child: Column(
@@ -370,6 +434,25 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
                 }
               },
             ),
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: _pickStartDate,
+              icon: const Icon(Icons.event_outlined),
+              label: Text('Дата начала: ${formatGroupDate(_startDate)}'),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _pickStartTime,
+              icon: const Icon(Icons.schedule),
+              label: Text('Время начала: ${formatGroupTime(_startTime)}'),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Начнётся ${formatGroupDateTime(_startsAt)}',
+              style: textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
             const SizedBox(height: 4),
             CheckboxListTile(
               contentPadding: EdgeInsets.zero,
@@ -391,22 +474,22 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
             ),
             const SizedBox(height: 4),
             OutlinedButton.icon(
-              onPressed: _indefinite ? null : _pickDate,
+              onPressed: _indefinite ? null : _pickEndDate,
               icon: const Icon(Icons.calendar_today),
               label: Text(
-                _date == null
+                _endDate == null
                     ? 'Дата завершения'
-                    : 'Дата завершения: ${formatGroupDate(_date!)}',
+                    : 'Дата завершения: ${formatGroupDate(_endDate!)}',
               ),
             ),
             const SizedBox(height: 12),
             OutlinedButton.icon(
-              onPressed: _indefinite ? null : _pickTime,
+              onPressed: _indefinite ? null : _pickEndTime,
               icon: const Icon(Icons.schedule),
               label: Text(
-                _time == null
+                _endTime == null
                     ? 'Время завершения'
-                    : 'Время завершения: ${formatGroupTime(_time!)}',
+                    : 'Время завершения: ${formatGroupTime(_endTime!)}',
               ),
             ),
             if (!_indefinite && _scheduleError != null) ...[
@@ -490,4 +573,3 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
     );
   }
 }
-

@@ -39,14 +39,10 @@ class _HomeScreenState extends State<HomeScreen> {
       isScrollControlled: true,
       useSafeArea: true,
       showDragHandle: true,
-      builder: (context) => _DemoUserSheet(
-        users: demoUsers,
-        currentUserId: currentDemoUserId,
-      ),
+      builder: (context) =>
+          _DemoUserSheet(users: demoUsers, currentUserId: currentDemoUserId),
     );
-    if (selectedId == null ||
-        selectedId == currentDemoUserId ||
-        !mounted) {
+    if (selectedId == null || selectedId == currentDemoUserId || !mounted) {
       return;
     }
 
@@ -60,9 +56,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openScreen(Widget screen) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (context) => screen),
-    );
+    await Navigator.of(context)
+        .push(MaterialPageRoute<void>(builder: (context) => screen));
     if (mounted) {
       setState(() {});
     }
@@ -168,9 +163,9 @@ class _JoinInvitationLabel extends StatelessWidget {
                   child: Text(
                     label,
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: colorScheme.onError,
-                          fontWeight: FontWeight.w700,
-                        ),
+                      color: colorScheme.onError,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ),
@@ -182,10 +177,7 @@ class _JoinInvitationLabel extends StatelessWidget {
 }
 
 class _DemoUserSheet extends StatelessWidget {
-  const _DemoUserSheet({
-    required this.users,
-    required this.currentUserId,
-  });
+  const _DemoUserSheet({required this.users, required this.currentUserId});
 
   final List<DirectoryPerson> users;
   final String currentUserId;
@@ -213,9 +205,7 @@ class _DemoUserSheet extends StatelessWidget {
           for (final user in users)
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: CircleAvatar(
-                child: Text(memberInitials(user.name)),
-              ),
+              leading: CircleAvatar(child: Text(memberInitials(user.name))),
               title: Text(user.name),
               subtitle: user.id == currentUserId
                   ? const Text('Текущий пользователь')

@@ -99,7 +99,7 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
 
   Future<void> _join(GroupInvitation invitation) async {
     final group = GroupsStore.instance.groupById(invitation.groupId);
-    if (group == null || !group.isActive || group.currentUserIsActiveMember) {
+    if (group == null || group.isFinished || group.currentUserIsActiveMember) {
       setState(() {});
       return;
     }
@@ -110,7 +110,9 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
         return AlertDialog(
           title: const Text('Присоединиться к группе?'),
           content: Text(
-            group.isIndefinite
+            group.isUpcoming
+                ? 'Группа ещё не началась. После присоединения вы станете участником, но карта и геолокация откроются только после начала группы.'
+                : group.isIndefinite
                 ? 'Группа бессрочная. После присоединения вы сможете видеть геолокацию участников и делиться своей геолокацией. Вы сможете покинуть группу в любое время.'
                 : 'После присоединения вы сможете видеть геолокацию участников группы и делиться своей геолокацией до окончания срока группы. Разрешение геолокации будет запрошено отдельно.',
           ),
@@ -250,17 +252,13 @@ class _InvitationCard extends StatelessWidget {
   final VoidCallback onJoin;
 
   String _scheduleLabel(GeoGroup? group) {
-    if (group == null || !group.isActive) {
+    if (group == null) {
       return 'Группа завершена';
     }
-    if (group.isIndefinite) {
-      return 'Бессрочная группа';
+    if (group.isFinished) {
+      return group.wasCancelledBeforeStart ? 'Отменена' : 'Группа завершена';
     }
-    final endsAt = group.endsAt;
-    if (endsAt == null) {
-      return 'Бессрочная группа';
-    }
-    return 'До ${formatGroupDateTime(endsAt)}';
+    return group.scheduleSummary;
   }
 
   @override
@@ -268,9 +266,9 @@ class _InvitationCard extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
     final group = GroupsStore.instance.groupById(invitation.groupId);
-    final ended = group == null || !group.isActive;
+    final ended = group == null || group.isFinished;
     final alreadyMember = group?.currentUserIsActiveMember ?? false;
-    final canJoin = group != null && group.isActive && !alreadyMember;
+    final canJoin = group != null && !group.isFinished && !alreadyMember;
     final scheduleLabel = _scheduleLabel(group);
 
     return Card(

@@ -17,12 +17,19 @@ void main() {
     required String id,
     required String name,
     required DateTime? endsAt,
+    DateTime? startsAt,
     String token = 'token-1',
   }) {
+    final now = DateTime.now();
     return GeoGroup(
       id: id,
       name: name,
-      createdAt: DateTime.now(),
+      createdAt: now,
+      startsAt:
+          startsAt ??
+          (endsAt != null && !endsAt.isAfter(now)
+              ? endsAt.subtract(const Duration(hours: 1))
+              : now.subtract(const Duration(minutes: 5))),
       endsAt: endsAt,
       createdByUserId: currentDemoUserId,
       qrInviteToken: token,
@@ -51,6 +58,7 @@ void main() {
 
     group.updateDetails(
       name: 'Новое имя',
+      startsAt: group.startsAt,
       endsAt: group.endsAt,
       members: List<GroupMember>.of(group.members),
     );
@@ -63,6 +71,7 @@ void main() {
       id: 'switch-check',
       name: 'Проверка приглашения',
       createdAt: DateTime.now(),
+      startsAt: DateTime.now().subtract(const Duration(minutes: 5)),
       endsAt: DateTime.now().add(const Duration(days: 1)),
       createdByUserId: defaultDemoUserId,
       members: [
@@ -116,6 +125,7 @@ void main() {
       id: 'picnic',
       name: 'Пикник в парке',
       createdAt: DateTime.now(),
+      startsAt: DateTime.now().subtract(const Duration(minutes: 5)),
       endsAt: DateTime.now().add(const Duration(hours: 3)),
       members: [GroupMember(id: 'maria', name: 'Мария')],
     );

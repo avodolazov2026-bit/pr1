@@ -74,6 +74,7 @@ class GeoGroup {
     required this.id,
     required this.name,
     required this.createdAt,
+    required this.startsAt,
     required this.endsAt,
     required this.members,
     this.createdByUserId,
@@ -87,11 +88,17 @@ class GeoGroup {
   /// Локальный токен QR-приглашения. Создаётся один раз и не меняется при редактировании.
   final String qrInviteToken;
 
+  /// Начало группы. Меняется только пока группа запланирована, поэтому поле не final.
+  DateTime startsAt;
+
   /// null — группа бессрочная и не завершается по времени.
   DateTime? endsAt;
 
   /// Организатор завершил группу раньше срока. Объект и приглашения сохраняются.
   bool endedByOrganizer = false;
+
+  /// Момент ручной отмены или завершения. null у старых групп без этой отметки.
+  DateTime? endedAt;
   final List<GroupMember> members;
 
   /// Кто создал группу. Общий список групп не делится по пользователям.
@@ -128,24 +135,29 @@ class GeoGroup {
   /// Возвращает текст ошибки и ничего не меняет, если сохранить нельзя.
   String? updateDetails({
     required String name,
+    required DateTime startsAt,
     required DateTime? endsAt,
     required List<GroupMember> members,
   }) {
-    if (!isActive) {
+    if (isFinished) {
       return 'Завершённую группу нельзя изменить.';
     }
     final trimmed = name.trim();
     if (trimmed.isEmpty) {
       return 'Введите название группы';
     }
-    final issue = validateEndsAtUpdate(
+    final issue = validateGroupSchedule(
+      originalStartsAt: this.startsAt,
+      nextStartsAt: startsAt,
       originalEndsAt: this.endsAt,
       nextEndsAt: endsAt,
+      upcoming: isUpcoming,
     );
     if (issue != null) {
       return issue;
     }
     this.name = trimmed;
+    this.startsAt = startsAt;
     this.endsAt = endsAt;
     this.members
       ..clear()
@@ -163,24 +175,70 @@ class GeoGroup {
 
   bool get isIndefinite => endsAt == null;
 
+  bool get isUpcoming => !endedByOrganizer && DateTime.now().isBefore(startsAt);
+
   bool get isActive {
-    if (endedByOrganizer) {
-      return false;
-    }
     final endsAt = this.endsAt;
-    if (endsAt == null) {
-      return true;
-    }
-    return endsAt.isAfter(DateTime.now());
+    return !endedByOrganizer &&
+        !DateTime.now().isBefore(startsAt) &&
+        (endsAt == null || DateTime.now().isBefore(endsAt));
   }
 
-  String get activeUntilLabel {
+  bool get isFinished {
     final endsAt = this.endsAt;
-    if (endsAt == null) {
-      return 'Бессрочная';
-    }
-    return formatGroupDateTime(endsAt);
+    return endedByOrganizer ||
+        (endsAt != null && !DateTime.now().isBefore(endsAt));
   }
+
+  /// Карта и передача геопозиции доступны только у уже начавшейся группы.
+  bool get canUseMap => isActive;
+
+  bool get wasCancelledBeforeStart {
+    final endedAt = this.endedAt;
+    return endedByOrganizer && endedAt != null && endedAt.isBefore(startsAt);
+  }
+
+  String get statusBadge {
+    if (isUpcoming) {
+      return 'Запланирована';
+    }
+    if (isActive) {
+      return 'Активна';
+    }
+    if (wasCancelledBeforeStart) {
+      return 'Отменена';
+    }
+    if (endedByOrganizer) {
+      return 'Завершена';
+    }
+    return 'Истекла';
+  }
+
+  String get scheduleSummary {
+    if (isUpcoming) {
+      return 'Начнётся ${formatGroupDateTime(startsAt)}';
+    }
+    if (isActive) {
+      final activeUntil = endsAt;
+      if (activeUntil == null) {
+        return 'Без срока окончания';
+      }
+      return 'До ${formatGroupDateTime(activeUntil)}';
+    }
+    if (wasCancelledBeforeStart) {
+      return 'Была запланирована на ${formatGroupDateTime(startsAt)}';
+    }
+    if (endedByOrganizer) {
+      return 'Завершена организатором';
+    }
+    final finishedAt = endsAt;
+    if (finishedAt != null) {
+      return 'Истекла ${formatGroupDateTime(finishedAt)}';
+    }
+    return 'Завершена организатором';
+  }
+
+  String get activeUntilLabel => scheduleSummary;
 }
 
 enum GroupPeriod {
@@ -239,16 +297,18 @@ class GroupsStore {
   List<GeoGroup> get myGroups =>
       groups.where((group) => group.currentUserIsActiveMember).toList();
 
-  /// Завершает группу для всех. Участник без роли организатора сделать этого не может.
+  /// Завершает активную группу или отменяет запланированную.
+  /// Участник без роли организатора сделать этого не может.
   bool endGroup(GeoGroup group) {
-    if (!group.isActive || !group.currentUserIsActiveOrganizer) {
+    if (group.isFinished || !group.currentUserIsActiveOrganizer) {
       return false;
     }
     group.endedByOrganizer = true;
+    group.endedAt = DateTime.now();
     return true;
   }
 
-  /// Ожидающие приглашения конкретного пользователя только в активные группы.
+  /// Ожидающие приглашения пользователя в запланированные и активные группы.
   int pendingInvitationCountFor(String userId) {
     var count = 0;
     for (final invitation in invitations) {
@@ -257,7 +317,7 @@ class GroupsStore {
         continue;
       }
       final group = groupById(invitation.groupId);
-      if (group != null && group.isActive) {
+      if (group != null && !group.isFinished) {
         count += 1;
       }
     }
@@ -316,7 +376,7 @@ class GroupsStore {
     if (group.qrInviteToken != parsed.inviteToken) {
       return QrInviteClaimResult.invalidToken;
     }
-    if (!group.isActive) {
+    if (group.isFinished) {
       return QrInviteClaimResult.inactive;
     }
 
@@ -380,7 +440,7 @@ class GroupsStore {
         invitation.status = InvitationStatus.revoked;
       }
     }
-    if (!group.isActive) {
+    if (group.isFinished) {
       return;
     }
 
@@ -412,7 +472,7 @@ class GroupsStore {
     if (group == null) {
       return InvitationAcceptResult.missingGroup;
     }
-    if (!group.isActive) {
+    if (group.isFinished) {
       return InvitationAcceptResult.groupEnded;
     }
     GroupMember? member;
@@ -494,6 +554,63 @@ String? validateEndsAtUpdate({
   }
   return null;
 }
+
+/// null — расписание можно сохранить. Иначе текст, который нужно показать пользователю.
+String? validateGroupSchedule({
+  required DateTime originalStartsAt,
+  required DateTime nextStartsAt,
+  required DateTime? originalEndsAt,
+  required DateTime? nextEndsAt,
+  required bool upcoming,
+  DateTime? now,
+}) {
+  final current = now ?? DateTime.now();
+  if (upcoming) {
+    if (!nextStartsAt.isAfter(current)) {
+      return 'Начало группы должно быть в будущем';
+    }
+  } else if (nextStartsAt != originalStartsAt) {
+    return 'Время начала активной группы нельзя изменить.';
+  }
+  if (nextEndsAt != null && !nextEndsAt.isAfter(nextStartsAt)) {
+    return 'Окончание должно быть позже начала';
+  }
+  if (upcoming) {
+    if (nextEndsAt != null && !nextEndsAt.isAfter(current)) {
+      return 'Нельзя выбрать дату и время в прошлом';
+    }
+    return null;
+  }
+  return validateEndsAtUpdate(
+    originalEndsAt: originalEndsAt,
+    nextEndsAt: nextEndsAt,
+    now: current,
+  );
+}
+
+int compareActiveGroups(GeoGroup a, GeoGroup b) {
+  final aEnd = a.endsAt;
+  final bEnd = b.endsAt;
+  if (aEnd == null && bEnd == null) {
+    return a.startsAt.compareTo(b.startsAt);
+  }
+  if (aEnd == null) {
+    return 1;
+  }
+  if (bEnd == null) {
+    return -1;
+  }
+  return aEnd.compareTo(bEnd);
+}
+
+int compareUpcomingGroups(GeoGroup a, GeoGroup b) =>
+    a.startsAt.compareTo(b.startsAt);
+
+int compareFinishedGroups(GeoGroup a, GeoGroup b) =>
+    _finishedSortKey(b).compareTo(_finishedSortKey(a));
+
+DateTime _finishedSortKey(GeoGroup group) =>
+    group.endedAt ?? group.endsAt ?? group.startsAt;
 
 /// Локальная схема приглашения. Позже её можно заменить на HTTPS-ссылку.
 String buildGroupInvitePayload(GeoGroup group) {
@@ -654,6 +771,7 @@ List<GeoGroup> _demoGroups() {
       id: 'picnic',
       name: 'Пикник в парке',
       createdAt: now.subtract(const Duration(days: 20)),
+      startsAt: now.subtract(const Duration(days: 20)),
       endsAt: _upcoming(11, 15, 18, 0),
       members: [
         _activeMember(id: 'maria', name: 'Мария', distanceMeters: 120),
@@ -666,6 +784,7 @@ List<GeoGroup> _demoGroups() {
       id: 'concert',
       name: 'Концерт',
       createdAt: now.subtract(const Duration(days: 20)),
+      startsAt: now.subtract(const Duration(days: 20)),
       endsAt: _upcoming(11, 16, 23, 30),
       members: [
         _activeMember(id: 'dmitry', name: 'Дмитрий', distanceMeters: 85),
@@ -677,6 +796,7 @@ List<GeoGroup> _demoGroups() {
       id: 'out-of-town',
       name: 'Поездка за город',
       createdAt: now.subtract(const Duration(days: 20)),
+      startsAt: now.subtract(const Duration(days: 20)),
       endsAt: _upcoming(11, 17, 20, 0),
       members: [
         _activeMember(id: 'igor', name: 'Игорь', distanceMeters: 150),
@@ -690,6 +810,7 @@ List<GeoGroup> _demoGroups() {
       id: 'fountain',
       name: 'Сборы у фонтана',
       createdAt: now.subtract(const Duration(minutes: 30)),
+      startsAt: now.subtract(const Duration(minutes: 30)),
       endsAt: now.add(const Duration(hours: 6)),
       createdByUserId: defaultDemoUserId,
       members: [
@@ -701,6 +822,7 @@ List<GeoGroup> _demoGroups() {
       id: 'evening-walk',
       name: 'Вечерняя прогулка',
       createdAt: now.subtract(const Duration(days: 3)),
+      startsAt: now.subtract(const Duration(days: 3)),
       endsAt: now.add(const Duration(days: 2)),
       createdByUserId: defaultDemoUserId,
       members: [
@@ -718,6 +840,7 @@ List<GeoGroup> _demoGroups() {
       id: 'cinema',
       name: 'Кино',
       createdAt: now.subtract(const Duration(days: 2)),
+      startsAt: now.subtract(const Duration(days: 2)),
       endsAt: now.subtract(const Duration(hours: 3)),
       createdByUserId: defaultDemoUserId,
       members: [
@@ -729,6 +852,7 @@ List<GeoGroup> _demoGroups() {
       id: 'friends-trip',
       name: 'Поездка к друзьям',
       createdAt: now.subtract(const Duration(days: 12)),
+      startsAt: now.subtract(const Duration(days: 12)),
       endsAt: now.add(const Duration(days: 4)),
       createdByUserId: defaultDemoUserId,
       members: [
@@ -741,6 +865,7 @@ List<GeoGroup> _demoGroups() {
       id: 'invite-ride',
       name: 'Велопрогулка',
       createdAt: now.subtract(const Duration(hours: 5)),
+      startsAt: now.subtract(const Duration(hours: 5)),
       endsAt: now.add(const Duration(days: 5)),
       members: [
         GroupMember(
@@ -757,6 +882,7 @@ List<GeoGroup> _demoGroups() {
       id: 'invite-neighbors',
       name: 'Соседи по району',
       createdAt: now.subtract(const Duration(days: 1)),
+      startsAt: now.subtract(const Duration(days: 1)),
       endsAt: null,
       members: [
         GroupMember(
@@ -772,6 +898,7 @@ List<GeoGroup> _demoGroups() {
       id: 'invite-breakfast',
       name: 'Вчерашний завтрак',
       createdAt: now.subtract(const Duration(days: 2)),
+      startsAt: now.subtract(const Duration(days: 2)),
       endsAt: now.subtract(const Duration(hours: 5)),
       members: [
         GroupMember(

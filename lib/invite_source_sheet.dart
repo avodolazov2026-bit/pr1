@@ -25,7 +25,7 @@ Future<List<DirectoryPerson>?> showInviteParticipants({
 
   switch (channel) {
     case _InviteChannel.demoList:
-      if (group != null && !group.isActive) {
+      if (group != null && group.isFinished) {
         await _showNotice(
           context,
           title: 'Группа завершена',
@@ -50,8 +50,7 @@ Future<List<DirectoryPerson>?> showInviteParticipants({
       await _showNotice(
         context,
         title: 'Контакты телефона',
-        message:
-            'Выбор контактов появится после подключения аккаунтов, сервера и разрешения на доступ к адресной книге.',
+        message: 'Выбор контактов появится после подключения аккаунтов, сервера и разрешения на доступ к адресной книге.',
       );
       return null;
     case _InviteChannel.qrCode:
@@ -59,11 +58,12 @@ Future<List<DirectoryPerson>?> showInviteParticipants({
         await _showNotice(
           context,
           title: 'QR-код группы',
-          message: 'Сначала сохраните группу, чтобы создать QR-код приглашения.',
+          message:
+              'Сначала сохраните группу, чтобы создать QR-код приглашения.',
         );
         return null;
       }
-      if (!group.isActive) {
+      if (group.isFinished) {
         await _showNotice(
           context,
           title: 'QR-код группы',
@@ -114,9 +114,10 @@ class _InviteSourceSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final currentGroup = group;
-    final savedAndEnded = currentGroup != null && !currentGroup.isActive;
-    final canOpenQr = currentGroup == null ||
-        (currentGroup.isActive && currentGroup.currentUserIsActiveOrganizer);
+    final savedAndFinished = currentGroup != null && currentGroup.isFinished;
+    final canOpenQr =
+        currentGroup == null ||
+        (!currentGroup.isFinished && currentGroup.currentUserIsActiveOrganizer);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
@@ -142,15 +143,15 @@ class _InviteSourceSheet extends StatelessWidget {
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,
-            enabled: canOpenQr && !savedAndEnded,
+            enabled: canOpenQr && !savedAndFinished,
             leading: const Icon(Icons.qr_code_2_outlined),
             title: const Text('QR-код группы'),
             subtitle: Text(
-              savedAndEnded
+              savedAndFinished
                   ? 'В завершённую группу нельзя приглашать участников'
                   : 'Показать код для присоединения',
             ),
-            onTap: canOpenQr && !savedAndEnded
+            onTap: canOpenQr && !savedAndFinished
                 ? () => Navigator.of(context).pop(_InviteChannel.qrCode)
                 : null,
           ),

@@ -38,7 +38,10 @@ class _MemberDraft {
 class _EditGroupScreenState extends State<EditGroupScreen> {
   late final TextEditingController _nameController;
   late final bool _originallyIndefinite;
+  late final bool _canChangeStart;
   late final List<_MemberDraft> _members;
+  DateTime? _startDate;
+  TimeOfDay? _startTime;
   DateTime? _date;
   TimeOfDay? _time;
   late bool _indefinite;
@@ -51,7 +54,11 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
     final group = widget.group;
     _nameController = TextEditingController(text: group.name);
     _originallyIndefinite = group.endsAt == null;
+    _canChangeStart = group.isUpcoming;
     _indefinite = _originallyIndefinite;
+    final startsAt = group.startsAt.toLocal();
+    _startDate = DateTime(startsAt.year, startsAt.month, startsAt.day);
+    _startTime = TimeOfDay(hour: startsAt.hour, minute: startsAt.minute);
     final endsAt = group.endsAt?.toLocal();
     if (endsAt != null) {
       _date = DateTime(endsAt.year, endsAt.month, endsAt.day);
@@ -77,6 +84,15 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
     super.dispose();
   }
 
+  DateTime? get _startsAt {
+    final date = _startDate;
+    final time = _startTime;
+    if (date == null || time == null) {
+      return null;
+    }
+    return DateTime(date.year, date.month, date.day, time.hour, time.minute);
+  }
+
   DateTime? get _endsAt {
     final date = _date;
     final time = _time;
@@ -86,16 +102,21 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
     return DateTime(date.year, date.month, date.day, time.hour, time.minute);
   }
 
-  bool get _keepsIndefinite => _originallyIndefinite && _indefinite;
+  bool get _hidesEnd => _indefinite;
+
+  DateTime get _nextStartsAt => _startsAt ?? widget.group.startsAt;
 
   void _rejectSchedule(String message) {
     setState(() => _scheduleError = message);
   }
 
-  void _acceptSchedule(DateTime next) {
-    final issue = validateEndsAtUpdate(
+  void _acceptSchedule(DateTime? nextEnd) {
+    final issue = validateGroupSchedule(
+      originalStartsAt: widget.group.startsAt,
+      nextStartsAt: _nextStartsAt,
       originalEndsAt: widget.group.endsAt,
-      nextEndsAt: next,
+      nextEndsAt: nextEnd,
+      upcoming: _canChangeStart,
     );
     if (issue != null) {
       _rejectSchedule(issue);
@@ -104,12 +125,62 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
     setState(() => _scheduleError = null);
   }
 
+  void _previewSchedule() {
+    if (!_hidesEnd && _endsAt == null) {
+      setState(() => _scheduleError = null);
+      return;
+    }
+    _acceptSchedule(_hidesEnd ? null : _endsAt);
+  }
+
+  Future<void> _pickStartDate() async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final lastDate = DateTime(now.year + 2, now.month, now.day);
+    var initial = _startDate ?? today;
+    if (initial.isBefore(today)) {
+      initial = today;
+    }
+    if (initial.isAfter(lastDate)) {
+      initial = lastDate;
+    }
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: today,
+      lastDate: lastDate,
+    );
+    if (picked == null) {
+      return;
+    }
+    setState(() {
+      _startDate = picked;
+      _scheduleError = null;
+    });
+    _previewSchedule();
+  }
+
+  Future<void> _pickStartTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _startTime ?? TimeOfDay.now(),
+    );
+    if (picked == null) {
+      return;
+    }
+    setState(() {
+      _startTime = picked;
+      _scheduleError = null;
+    });
+    _previewSchedule();
+  }
+
   Future<void> _pickDate() async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final original = widget.group.endsAt?.toLocal();
     var lastDate = DateTime(now.year + 2, now.month, now.day);
-    if (original != null) {
+    if (!_canChangeStart && original != null) {
       lastDate = DateTime(original.year, original.month, original.day);
     }
     if (lastDate.isBefore(today)) {
@@ -138,10 +209,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
       _date = picked;
       _scheduleError = null;
     });
-    final endsAt = _endsAt;
-    if (endsAt != null) {
-      _acceptSchedule(endsAt);
-    }
+    _previewSchedule();
   }
 
   Future<void> _pickTime() async {
@@ -156,10 +224,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
       _time = picked;
       _scheduleError = null;
     });
-    final endsAt = _endsAt;
-    if (endsAt != null) {
-      _acceptSchedule(endsAt);
-    }
+    _previewSchedule();
   }
 
   Future<void> _confirmExclude(_MemberDraft member) async {
@@ -269,8 +334,14 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
       return;
     }
 
+    final startsAt = _nextStartsAt;
+    if (_canChangeStart && _startsAt == null) {
+      _rejectSchedule('Выберите дату и время начала');
+      return;
+    }
+
     DateTime? endsAt;
-    if (!_keepsIndefinite) {
+    if (!_hidesEnd) {
       endsAt = _endsAt;
       if (endsAt == null) {
         _rejectSchedule('Выберите дату и время завершения');
@@ -278,9 +349,12 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
       }
     }
 
-    final issue = validateEndsAtUpdate(
+    final issue = validateGroupSchedule(
+      originalStartsAt: widget.group.startsAt,
+      nextStartsAt: startsAt,
       originalEndsAt: widget.group.endsAt,
       nextEndsAt: endsAt,
+      upcoming: _canChangeStart,
     );
     if (issue != null) {
       _rejectSchedule(issue);
@@ -292,6 +366,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
     }
     final error = widget.group.updateDetails(
       name: name,
+      startsAt: startsAt,
       endsAt: endsAt,
       members: _membersToSave(),
     );
@@ -329,9 +404,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
     );
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Редактировать группу'),
-      ),
+      appBar: AppBar(title: const Text('Редактировать группу')),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
@@ -350,11 +423,41 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                 }
               },
             ),
+            const SizedBox(height: 16),
+            if (_canChangeStart) ...[
+              OutlinedButton.icon(
+                onPressed: _pickStartDate,
+                icon: const Icon(Icons.event_outlined),
+                label: Text(
+                  _startDate == null
+                      ? 'Дата начала'
+                      : 'Дата начала: ${formatGroupDate(_startDate!)}',
+                ),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: _pickStartTime,
+                icon: const Icon(Icons.schedule),
+                label: Text(
+                  _startTime == null
+                      ? 'Время начала'
+                      : 'Время начала: ${formatGroupTime(_startTime!)}',
+                ),
+              ),
+            ] else
+              InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'Начало группы',
+                  border: OutlineInputBorder(),
+                  helperText: 'Время начала активной группы нельзя изменить.',
+                ),
+                child: Text(formatGroupDateTime(widget.group.startsAt)),
+              ),
             const SizedBox(height: 4),
             CheckboxListTile(
               contentPadding: EdgeInsets.zero,
               controlAffinity: ListTileControlAffinity.leading,
-              value: _keepsIndefinite,
+              value: _indefinite,
               title: const Text('Бессрочная группа'),
               subtitle: Text(
                 'Группа не завершится автоматически по времени',
@@ -362,18 +465,19 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                   color: colorScheme.onSurfaceVariant,
                 ),
               ),
-              onChanged: _originallyIndefinite
+              onChanged: _canChangeStart || _originallyIndefinite
                   ? (value) {
                       setState(() {
                         _indefinite = value ?? false;
                         _scheduleError = null;
                       });
+                      _previewSchedule();
                     }
                   : null,
             ),
             const SizedBox(height: 4),
             OutlinedButton.icon(
-              onPressed: _keepsIndefinite ? null : _pickDate,
+              onPressed: _hidesEnd ? null : _pickDate,
               icon: const Icon(Icons.calendar_today),
               label: Text(
                 _date == null
@@ -383,7 +487,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
             ),
             const SizedBox(height: 12),
             OutlinedButton.icon(
-              onPressed: _keepsIndefinite ? null : _pickTime,
+              onPressed: _hidesEnd ? null : _pickTime,
               icon: const Icon(Icons.schedule),
               label: Text(
                 _time == null
@@ -391,13 +495,13 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                     : 'Время завершения: ${formatGroupTime(_time!)}',
               ),
             ),
-            if (!_keepsIndefinite && _scheduleError != null) ...[
+            if (_scheduleError != null) ...[
               const SizedBox(height: 8),
               Text(
                 _scheduleError!,
                 style: textTheme.bodyMedium?.copyWith(color: colorScheme.error),
               ),
-            ] else if (!_keepsIndefinite && endsAt != null) ...[
+            ] else if (!_hidesEnd && endsAt != null) ...[
               const SizedBox(height: 8),
               Text(
                 'Активно до: ${formatGroupDateTime(endsAt)}',
@@ -406,7 +510,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                 ),
               ),
             ],
-            if (!_originallyIndefinite) ...[
+            if (!_canChangeStart && !_originallyIndefinite) ...[
               const SizedBox(height: 8),
               Text(
                 'Продлить срок группы нельзя: это потребует нового согласия участников.',
@@ -420,17 +524,13 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
             const SizedBox(height: 4),
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: CircleAvatar(
-                child: Text(memberInitials(organizerName)),
-              ),
+              leading: CircleAvatar(child: Text(memberInitials(organizerName))),
               title: Text('$organizerName — организатор'),
             ),
             for (final member in activeMembers)
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: CircleAvatar(
-                  child: Text(memberInitials(member.name)),
-                ),
+                leading: CircleAvatar(child: Text(memberInitials(member.name))),
                 title: Text(member.name),
                 subtitle: Text(
                   'Участник',

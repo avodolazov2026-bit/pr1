@@ -22,15 +22,19 @@ void main() {
     bool indefinite = false,
   }) {
     sequence += 1;
+    final now = DateTime.now();
     return GeoGroup(
       id: 'end-badge-$sequence',
       name: 'Группа $sequence',
-      createdAt: DateTime.now(),
+      createdAt: now,
+      startsAt: active || indefinite
+          ? now.subtract(const Duration(minutes: 5))
+          : now.subtract(const Duration(hours: 3)),
       endsAt: indefinite
           ? null
           : active
-              ? DateTime.now().add(const Duration(days: 2))
-              : DateTime.now().subtract(const Duration(hours: 2)),
+          ? now.add(const Duration(days: 2))
+          : now.subtract(const Duration(hours: 2)),
       createdByUserId: inviteeIsOrganizer ? inviteeId : 'organizer',
       members: [
         if (!inviteeIsOrganizer)
@@ -54,16 +58,11 @@ void main() {
   }
 
   Future<void> pumpHome(WidgetTester tester) async {
-    await tester.pumpWidget(
-      MaterialApp(home: HomeScreen(key: UniqueKey())),
-    );
+    await tester.pumpWidget(MaterialApp(home: HomeScreen(key: UniqueKey())));
   }
 
   test('participant cannot end someone else\'s group', () {
-    final group = buildGroup(
-      inviteeId: currentDemoUserId,
-      inviteeName: 'Вы',
-    );
+    final group = buildGroup(inviteeId: currentDemoUserId, inviteeName: 'Вы');
     group.members.last.status = MembershipStatus.active;
     expect(GroupsStore.instance.endGroup(group), isFalse);
     expect(group.isActive, isTrue);
@@ -87,11 +86,15 @@ void main() {
     expect(group.isActive, isFalse);
     expect(GroupsStore.instance.groupById(group.id), same(group));
     expect(invitation.status, InvitationStatus.pending);
-    expect(group.updateDetails(
-      name: 'Новое имя',
-      endsAt: group.endsAt,
-      members: List<GroupMember>.of(group.members),
-    ), 'Завершённую группу нельзя изменить.');
+    expect(
+      group.updateDetails(
+        name: 'Новое имя',
+        startsAt: group.startsAt,
+        endsAt: group.endsAt,
+        members: List<GroupMember>.of(group.members),
+      ),
+      'Завершённую группу нельзя изменить.',
+    );
 
     final before = GroupsStore.instance.invitations.length;
     group.members.add(
@@ -109,10 +112,7 @@ void main() {
 
   test('pending count ignores other users and ended groups', () {
     const userId = 'anna-smirnova';
-    final active = buildGroup(
-      inviteeId: userId,
-      inviteeName: 'Анна Смирнова',
-    );
+    final active = buildGroup(inviteeId: userId, inviteeName: 'Анна Смирнова');
     final ended = buildGroup(
       inviteeId: userId,
       inviteeName: 'Анна Смирнова',
@@ -158,7 +158,7 @@ void main() {
             (invitation) =>
                 invitation.inviteeId == userId &&
                 invitation.status == InvitationStatus.pending &&
-                store.groupById(invitation.groupId)?.isActive == true,
+                store.groupById(invitation.groupId)?.isFinished == false,
           )
           .length,
     );
@@ -183,9 +183,7 @@ void main() {
     );
     GroupsStore.instance.addGroup(group);
 
-    await tester.pumpWidget(
-      MaterialApp(home: GroupScreen(group: group)),
-    );
+    await tester.pumpWidget(MaterialApp(home: GroupScreen(group: group)));
 
     expect(find.text('Завершить группу'), findsOneWidget);
     expect(find.text('Покинуть группу'), findsNothing);
@@ -205,7 +203,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(group.endedByOrganizer, isTrue);
-    expect(find.text('Группа завершена'), findsOneWidget);
+    expect(find.text('Завершена организатором'), findsOneWidget);
     expect(find.text('Завершить группу'), findsNothing);
     expect(find.text('Покинуть группу'), findsNothing);
     expect(find.text('Открыть карту'), findsNothing);
@@ -238,15 +236,10 @@ void main() {
   });
 
   testWidgets('participant can leave and cannot end the group', (tester) async {
-    final group = buildGroup(
-      inviteeId: currentDemoUserId,
-      inviteeName: 'Вы',
-    );
+    final group = buildGroup(inviteeId: currentDemoUserId, inviteeName: 'Вы');
     group.members.last.status = MembershipStatus.active;
 
-    await tester.pumpWidget(
-      MaterialApp(home: GroupScreen(group: group)),
-    );
+    await tester.pumpWidget(MaterialApp(home: GroupScreen(group: group)));
 
     expect(find.text('Покинуть группу'), findsOneWidget);
     expect(find.text('Завершить группу'), findsNothing);
@@ -264,11 +257,9 @@ void main() {
     );
     group.members.last.status = MembershipStatus.active;
 
-    await tester.pumpWidget(
-      MaterialApp(home: GroupScreen(group: group)),
-    );
+    await tester.pumpWidget(MaterialApp(home: GroupScreen(group: group)));
 
-    expect(find.text('Группа завершена'), findsOneWidget);
+    expect(find.textContaining('Истекла'), findsOneWidget);
     expect(find.text('Открыть карту'), findsNothing);
     expect(find.text('Покинуть группу'), findsNothing);
     expect(find.text('Завершить группу'), findsNothing);
@@ -282,11 +273,9 @@ void main() {
       active: false,
     );
 
-    await tester.pumpWidget(
-      MaterialApp(home: GroupScreen(group: group)),
-    );
+    await tester.pumpWidget(MaterialApp(home: GroupScreen(group: group)));
 
-    expect(find.text('Группа завершена'), findsOneWidget);
+    expect(find.textContaining('Истекла'), findsOneWidget);
     expect(find.text('Завершить группу'), findsNothing);
     expect(find.text('Покинуть группу'), findsNothing);
     expect(find.text('Открыть карту'), findsNothing);
@@ -350,8 +339,9 @@ void main() {
     expect(find.text('1'), findsOneWidget);
     expect(find.text('2'), findsNothing);
 
-    final accepted = store.incomingPending
-        .firstWhere((invitation) => invitation.groupId == secondActive.id);
+    final accepted = store.incomingPending.firstWhere(
+      (invitation) => invitation.groupId == secondActive.id,
+    );
     store.acceptInvitation(accepted);
     await pumpHome(tester);
     expect(find.text('Присоединиться по приглашению'), findsOneWidget);

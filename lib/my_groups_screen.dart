@@ -37,24 +37,35 @@ class _MyGroupsScreenState extends State<MyGroupsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final groups = GroupsStore.instance.myGroups;
+    final membership = GroupsStore.instance.myGroups;
+    final active = membership.where((group) => group.isActive).toList()
+      ..sort(compareActiveGroups);
+    final upcoming = membership.where((group) => group.isUpcoming).toList()
+      ..sort(compareUpcomingGroups);
+    final finished = membership.where((group) => group.isFinished).toList()
+      ..sort(compareFinishedGroups);
+    final sections = <(String, List<GeoGroup>)>[
+      ('Активные', active),
+      ('Запланированные', upcoming),
+      ('Завершённые', finished),
+    ].where((section) => section.$2.isNotEmpty).toList();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Мои группы'),
-      ),
+      appBar: AppBar(title: const Text('Мои группы')),
       body: SafeArea(
-        child: ListView.separated(
+        child: ListView(
           padding: const EdgeInsets.all(24),
-          itemCount: groups.length,
-          separatorBuilder: (context, index) => const SizedBox(height: 12),
-          itemBuilder: (context, index) {
-            final group = groups[index];
-            return GroupCard(
-              group: group,
-              onTap: () => _openGroup(group),
-            );
-          },
+          children: [
+            for (final section in sections) ...[
+              Text(section.$1, style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 12),
+              for (final group in section.$2) ...[
+                GroupCard(group: group, onTap: () => _openGroup(group)),
+                const SizedBox(height: 12),
+              ],
+              const SizedBox(height: 12),
+            ],
+          ],
         ),
       ),
     );
