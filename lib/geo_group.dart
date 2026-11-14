@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 
 import 'package:geo_groups/group_invitation.dart';
 
-const currentUserId = 'current-user';
-
 enum MemberRole { organizer, participant }
 
 enum MembershipStatus { active, invited, left, removedByOrganizer }
@@ -22,6 +20,8 @@ class DirectoryPerson {
   int get hashCode => id.hashCode;
 }
 
+const defaultDemoUserId = 'current-user';
+
 const demoDirectory = <DirectoryPerson>[
   DirectoryPerson(id: 'anna-smirnova', name: 'Анна Смирнова'),
   DirectoryPerson(id: 'mikhail-ivanov', name: 'Михаил Иванов'),
@@ -30,6 +30,26 @@ const demoDirectory = <DirectoryPerson>[
   DirectoryPerson(id: 'olga-sokolova', name: 'Ольга Соколова'),
 ];
 
+/// Все, между кем можно переключаться в режиме разработки.
+final List<DirectoryPerson> demoUsers = <DirectoryPerson>[
+  DirectoryPerson(id: defaultDemoUserId, name: 'Вы'),
+  ...demoDirectory,
+];
+
+/// Единый текущий демонстрационный пользователь.
+/// Только память процесса: при перезапуске снова [defaultDemoUserId].
+/// Список групп и приглашений при смене пользователя не копируется.
+String currentDemoUserId = defaultDemoUserId;
+
+DirectoryPerson get currentDemoUser {
+  for (final user in demoUsers) {
+    if (user.id == currentDemoUserId) {
+      return user;
+    }
+  }
+  return demoUsers.first;
+}
+
 class GroupMember {
   GroupMember({
     required this.id,
@@ -37,7 +57,6 @@ class GroupMember {
     this.role = MemberRole.participant,
     this.status = MembershipStatus.active,
     this.distanceMeters,
-    this.isCurrentUser = false,
   });
 
   final String id;
@@ -47,7 +66,8 @@ class GroupMember {
 
   /// Расстояние только у активного участника. У приглашённого его нет.
   final int? distanceMeters;
-  final bool isCurrentUser;
+
+  bool get isCurrentUser => id == currentDemoUserId;
 }
 
 class GeoGroup {
@@ -57,7 +77,7 @@ class GeoGroup {
     required this.createdAt,
     required this.endsAt,
     required this.members,
-    this.createdByCurrentUser = false,
+    this.createdByUserId,
   });
 
   final String id;
@@ -67,7 +87,11 @@ class GeoGroup {
   /// null — группа бессрочная и не завершается по времени.
   DateTime? endsAt;
   final List<GroupMember> members;
-  final bool createdByCurrentUser;
+
+  /// Кто создал группу. Общий список групп не делится по пользователям.
+  final String? createdByUserId;
+
+  bool get createdByCurrentUser => createdByUserId == currentDemoUserId;
 
   bool get currentUserHasLeft => members.any(
         (member) =>
@@ -205,7 +229,7 @@ class GroupsStore {
     final result = invitations
         .where(
           (invitation) =>
-              invitation.inviteeId == currentUserId &&
+              invitation.inviteeId == currentDemoUserId &&
               invitation.status == InvitationStatus.pending,
         )
         .toList();
@@ -273,11 +297,6 @@ class GroupsStore {
     if (!group.isActive) {
       return InvitationAcceptResult.groupEnded;
     }
-    if (group.currentUserIsActiveMember) {
-      return InvitationAcceptResult.alreadyMember;
-    }
-
-    invitation.status = InvitationStatus.accepted;
     GroupMember? member;
     for (final candidate in group.members) {
       if (candidate.id == invitation.inviteeId) {
@@ -285,15 +304,17 @@ class GroupsStore {
         break;
       }
     }
+    if (member != null && member.status == MembershipStatus.active) {
+      return InvitationAcceptResult.alreadyMember;
+    }
+
+    invitation.status = InvitationStatus.accepted;
     if (member == null) {
       group.members.add(
         GroupMember(
           id: invitation.inviteeId,
-          name: invitation.inviteeId == currentUserId
-              ? 'Вы'
-              : invitation.inviteeName,
+          name: invitation.inviteeName,
           status: MembershipStatus.active,
-          isCurrentUser: invitation.inviteeId == currentUserId,
         ),
       );
     } else if (member.status == MembershipStatus.invited) {
@@ -416,11 +437,10 @@ DateTime _upcoming(int month, int day, int hour, int minute) {
 
 GroupMember _currentUser({bool organizer = false}) {
   return GroupMember(
-    id: currentUserId,
+    id: defaultDemoUserId,
     name: 'Вы',
     role: organizer ? MemberRole.organizer : MemberRole.participant,
     status: MembershipStatus.active,
-    isCurrentUser: true,
   );
 }
 
@@ -439,10 +459,9 @@ GroupMember _activeMember({
 
 GroupMember _invitedCurrentUser() {
   return GroupMember(
-    id: currentUserId,
+    id: defaultDemoUserId,
     name: 'Вы',
     status: MembershipStatus.invited,
-    isCurrentUser: true,
   );
 }
 
@@ -490,7 +509,7 @@ List<GeoGroup> _demoGroups() {
       name: 'Сборы у фонтана',
       createdAt: now.subtract(const Duration(minutes: 30)),
       endsAt: now.add(const Duration(hours: 6)),
-      createdByCurrentUser: true,
+      createdByUserId: defaultDemoUserId,
       members: [
         _activeMember(id: 'maria-fountain', name: 'Мария', distanceMeters: 90),
         _currentUser(organizer: true),
@@ -501,7 +520,7 @@ List<GeoGroup> _demoGroups() {
       name: 'Вечерняя прогулка',
       createdAt: now.subtract(const Duration(days: 3)),
       endsAt: now.add(const Duration(days: 2)),
-      createdByCurrentUser: true,
+      createdByUserId: defaultDemoUserId,
       members: [
         _activeMember(id: 'alexey-walk', name: 'Алексей', distanceMeters: 250),
         _activeMember(id: 'elena-walk', name: 'Елена', distanceMeters: 500),
@@ -518,7 +537,7 @@ List<GeoGroup> _demoGroups() {
       name: 'Кино',
       createdAt: now.subtract(const Duration(days: 2)),
       endsAt: now.subtract(const Duration(hours: 3)),
-      createdByCurrentUser: true,
+      createdByUserId: defaultDemoUserId,
       members: [
         _activeMember(id: 'dmitry-cinema', name: 'Дмитрий', distanceMeters: 40),
         _currentUser(organizer: true),
@@ -529,7 +548,7 @@ List<GeoGroup> _demoGroups() {
       name: 'Поездка к друзьям',
       createdAt: now.subtract(const Duration(days: 12)),
       endsAt: now.add(const Duration(days: 4)),
-      createdByCurrentUser: true,
+      createdByUserId: defaultDemoUserId,
       members: [
         _activeMember(id: 'igor-trip', name: 'Игорь', distanceMeters: 180),
         _activeMember(id: 'anna-trip', name: 'Анна', distanceMeters: 640),
@@ -605,7 +624,7 @@ List<GroupInvitation> _demoInvitations() {
       id: 'invitation-ride',
       groupId: 'invite-ride',
       inviterName: 'Мария Ковалёва',
-      inviteeId: currentUserId,
+      inviteeId: defaultDemoUserId,
       inviteeName: 'Вы',
       source: InvitationSource.demoList,
       status: InvitationStatus.pending,
@@ -616,7 +635,7 @@ List<GroupInvitation> _demoInvitations() {
       id: 'invitation-neighbors',
       groupId: 'invite-neighbors',
       inviterName: 'Игорь Белов',
-      inviteeId: currentUserId,
+      inviteeId: defaultDemoUserId,
       inviteeName: 'Вы',
       source: InvitationSource.qrCode,
       status: InvitationStatus.pending,
@@ -626,7 +645,7 @@ List<GroupInvitation> _demoInvitations() {
       id: 'invitation-breakfast',
       groupId: 'invite-breakfast',
       inviterName: 'Елена Орлова',
-      inviteeId: currentUserId,
+      inviteeId: defaultDemoUserId,
       inviteeName: 'Вы',
       source: InvitationSource.demoList,
       status: InvitationStatus.pending,

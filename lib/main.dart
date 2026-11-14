@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:geo_groups/created_groups_screen.dart';
+import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/invitations_screen.dart';
 import 'package:geo_groups/my_groups_screen.dart';
 
@@ -24,8 +25,39 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  Future<void> _switchDemoUser() async {
+    final selectedId = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (context) => _DemoUserSheet(
+        users: demoUsers,
+        currentUserId: currentDemoUserId,
+      ),
+    );
+    if (selectedId == null ||
+        selectedId == currentDemoUserId ||
+        !mounted) {
+      return;
+    }
+
+    setState(() {
+      currentDemoUserId = selectedId;
+    });
+    final selected = currentDemoUser;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Выбран пользователь: ${selected.name}')),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,6 +67,13 @@ class HomeScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Geo Groups'),
         leading: const Icon(Icons.groups),
+        actions: [
+          IconButton(
+            tooltip: 'Демонстрационный пользователь',
+            onPressed: _switchDemoUser,
+            icon: const Icon(Icons.switch_account_outlined),
+          ),
+        ],
       ),
       body: SafeArea(
         child: Padding(
@@ -97,6 +136,56 @@ class HomeScreen extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _DemoUserSheet extends StatelessWidget {
+  const _DemoUserSheet({
+    required this.users,
+    required this.currentUserId,
+  });
+
+  final List<DirectoryPerson> users;
+  final String currentUserId;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Демонстрационный пользователь', style: textTheme.titleLarge),
+          const SizedBox(height: 8),
+          Text(
+            'Режим разработки. Данные групп и приглашений общие для всех демонстрационных пользователей.',
+            style: textTheme.bodyMedium?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 12),
+          for (final user in users)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: CircleAvatar(
+                child: Text(memberInitials(user.name)),
+              ),
+              title: Text(user.name),
+              subtitle: user.id == currentUserId
+                  ? const Text('Текущий пользователь')
+                  : null,
+              trailing: user.id == currentUserId
+                  ? Icon(Icons.check, color: colorScheme.primary)
+                  : null,
+              onTap: () => Navigator.of(context).pop(user.id),
+            ),
+        ],
       ),
     );
   }

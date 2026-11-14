@@ -55,14 +55,13 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen> {
       name: draft.name,
       createdAt: DateTime.now(),
       endsAt: draft.endsAt,
-      createdByCurrentUser: true,
+      createdByUserId: currentDemoUserId,
       members: [
         GroupMember(
-          id: currentUserId,
-          name: 'Вы',
+          id: currentDemoUser.id,
+          name: currentDemoUser.name,
           role: MemberRole.organizer,
           status: MembershipStatus.active,
-          isCurrentUser: true,
         ),
         for (final person in draft.invited)
           GroupMember(
@@ -290,7 +289,7 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
   Future<void> _pickInvitees() async {
     final selected = await showInviteParticipants(
       context: context,
-      excludedIds: const <String>{},
+      excludedIds: {currentDemoUserId},
       initiallySelectedIds: _invited.map((person) => person.id).toSet(),
     );
     if (selected == null || !mounted) {
@@ -429,8 +428,10 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
             const SizedBox(height: 4),
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: CircleAvatar(child: Text(memberInitials('Вы'))),
-              title: const Text('Вы — организатор'),
+              leading: CircleAvatar(
+                child: Text(memberInitials(currentDemoUser.name)),
+              ),
+              title: Text('${currentDemoUser.name} — организатор'),
             ),
             OutlinedButton.icon(
               onPressed: _pickInvitees,

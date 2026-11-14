@@ -19,8 +19,12 @@ class InvitePeopleSheet extends StatefulWidget {
 }
 
 class _InvitePeopleSheetState extends State<InvitePeopleSheet> {
-  late final List<DirectoryPerson> _people = demoDirectory
-      .where((person) => !widget.excludedIds.contains(person.id))
+  late final List<DirectoryPerson> _people = demoUsers
+      .where(
+        (person) =>
+            person.id != currentDemoUserId &&
+            !widget.excludedIds.contains(person.id),
+      )
       .toList();
   late final Set<String> _selected = {
     for (final id in widget.initiallySelectedIds)

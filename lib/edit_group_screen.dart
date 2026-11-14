@@ -19,7 +19,6 @@ class _MemberDraft {
     required this.originalStatus,
     required this.status,
     this.role = MemberRole.participant,
-    this.isCurrentUser = false,
     this.distanceMeters,
     this.persisted,
   });
@@ -29,11 +28,11 @@ class _MemberDraft {
   final MembershipStatus originalStatus;
   MembershipStatus status;
   final MemberRole role;
-  final bool isCurrentUser;
   final int? distanceMeters;
   final GroupMember? persisted;
 
-  bool get isOrganizer => role == MemberRole.organizer || isCurrentUser;
+  bool get isOrganizer =>
+      role == MemberRole.organizer || id == currentDemoUserId;
 }
 
 class _EditGroupScreenState extends State<EditGroupScreen> {
@@ -66,7 +65,6 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
           originalStatus: member.status,
           status: member.status,
           role: member.role,
-          isCurrentUser: member.isCurrentUser,
           distanceMeters: member.distanceMeters,
           persisted: member,
         ),
@@ -314,6 +312,14 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
     final endsAt = _endsAt;
+    _MemberDraft? organizer;
+    for (final member in _members) {
+      if (member.role == MemberRole.organizer) {
+        organizer = member;
+        break;
+      }
+    }
+    final organizerName = organizer?.name ?? currentDemoUser.name;
     final activeMembers = _members.where(
       (member) =>
           member.status == MembershipStatus.active && !member.isOrganizer,
@@ -414,8 +420,10 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
             const SizedBox(height: 4),
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: CircleAvatar(child: Text(memberInitials('Вы'))),
-              title: const Text('Вы — организатор'),
+              leading: CircleAvatar(
+                child: Text(memberInitials(organizerName)),
+              ),
+              title: Text('$organizerName — организатор'),
             ),
             for (final member in activeMembers)
               ListTile(
