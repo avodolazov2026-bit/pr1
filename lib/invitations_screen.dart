@@ -11,6 +11,29 @@ class InvitationsScreen extends StatefulWidget {
 }
 
 class _InvitationsScreenState extends State<InvitationsScreen> {
+  final _payloadController = TextEditingController();
+
+  @override
+  void dispose() {
+    _payloadController.dispose();
+    super.dispose();
+  }
+
+  void _claimPayload() {
+    final result = GroupsStore.instance.claimQrInvitation(
+      _payloadController.text,
+    );
+    if (result == QrInviteClaimResult.added) {
+      _payloadController.clear();
+    }
+    setState(() {});
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.clearSnackBars();
+    messenger.showSnackBar(
+      SnackBar(content: Text(messageForQrInviteClaim(result))),
+    );
+  }
+
   Future<void> _decline(GroupInvitation invitation) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -100,52 +123,75 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
     final invitations = GroupsStore.instance.incomingPending;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Приглашения'),
-      ),
+      appBar: AppBar(title: const Text('Приглашения')),
       body: SafeArea(
-        child: invitations.isEmpty
-            ? Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.mark_email_unread_outlined,
-                        size: 72,
-                        color: colorScheme.primary,
-                      ),
-                      const SizedBox(height: 24),
-                      Text(
-                        'Нет новых приглашений',
-                        style: textTheme.titleLarge,
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Здесь появятся приглашения в группы.',
-                        style: textTheme.bodyLarge,
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
+        child: ListView(
+          padding: const EdgeInsets.all(24),
+          children: [
+            Text('Получить приглашение по коду', style: textTheme.titleMedium),
+            const SizedBox(height: 8),
+            Text(
+              'Вставьте данные из QR-кода приглашения. '
+              'Сканирование камерой будет добавлено позднее.',
+              style: textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _payloadController,
+              minLines: 2,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                labelText: 'Данные приглашения',
+                alignLabelWithHint: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: _claimPayload,
+              child: const Text('Обработать приглашение'),
+            ),
+            const SizedBox(height: 24),
+            Text('Ожидающие приглашения', style: textTheme.titleMedium),
+            const SizedBox(height: 12),
+            if (invitations.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.mark_email_unread_outlined,
+                      size: 48,
+                      color: colorScheme.primary,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Нет новых приглашений',
+                      style: textTheme.titleLarge,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Здесь появятся приглашения в группы.',
+                      style: textTheme.bodyLarge,
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
                 ),
               )
-            : ListView.separated(
-                padding: const EdgeInsets.all(24),
-                itemCount: invitations.length,
-                separatorBuilder: (context, index) =>
-                    const SizedBox(height: 12),
-                itemBuilder: (context, index) {
-                  final invitation = invitations[index];
-                  return _InvitationCard(
-                    invitation: invitation,
-                    onDecline: () => _decline(invitation),
-                    onJoin: () => _join(invitation),
-                  );
-                },
-              ),
+            else
+              for (final invitation in invitations) ...[
+                _InvitationCard(
+                  invitation: invitation,
+                  onDecline: () => _decline(invitation),
+                  onJoin: () => _join(invitation),
+                ),
+                if (invitation != invitations.last) const SizedBox(height: 12),
+              ],
+          ],
+        ),
       ),
     );
   }

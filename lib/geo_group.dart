@@ -13,8 +13,7 @@ class DirectoryPerson {
   final String name;
 
   @override
-  bool operator ==(Object other) =>
-      other is DirectoryPerson && other.id == id;
+  bool operator ==(Object other) => other is DirectoryPerson && other.id == id;
 
   @override
   int get hashCode => id.hashCode;
@@ -101,21 +100,20 @@ class GeoGroup {
   bool get createdByCurrentUser => createdByUserId == currentDemoUserId;
 
   bool get currentUserHasLeft => members.any(
-        (member) =>
-            member.isCurrentUser && member.status == MembershipStatus.left,
-      );
+    (member) => member.isCurrentUser && member.status == MembershipStatus.left,
+  );
 
   bool get currentUserIsActiveOrganizer => members.any(
-        (member) =>
-            member.isCurrentUser &&
-            member.role == MemberRole.organizer &&
-            member.status == MembershipStatus.active,
-      );
+    (member) =>
+        member.isCurrentUser &&
+        member.role == MemberRole.organizer &&
+        member.status == MembershipStatus.active,
+  );
 
   bool get currentUserIsActiveMember => members.any(
-        (member) =>
-            member.isCurrentUser && member.status == MembershipStatus.active,
-      );
+    (member) =>
+        member.isCurrentUser && member.status == MembershipStatus.active,
+  );
 
   String get organizerName {
     for (final member in members) {
@@ -191,10 +189,10 @@ enum GroupPeriod {
   year;
 
   Duration get duration => switch (this) {
-        GroupPeriod.week => const Duration(days: 7),
-        GroupPeriod.month => const Duration(days: 30),
-        GroupPeriod.year => const Duration(days: 365),
-      };
+    GroupPeriod.week => const Duration(days: 7),
+    GroupPeriod.month => const Duration(days: 30),
+    GroupPeriod.year => const Duration(days: 365),
+  };
 }
 
 enum InvitationAcceptResult {
@@ -285,6 +283,85 @@ class GroupsStore {
           invitation.inviteeId == inviteeId &&
           invitation.status == InvitationStatus.pending,
     );
+  }
+
+  bool _hasInvitation({
+    required String groupId,
+    required String inviteeId,
+    required InvitationStatus status,
+  }) {
+    return invitations.any(
+      (invitation) =>
+          invitation.groupId == groupId &&
+          invitation.inviteeId == inviteeId &&
+          invitation.status == status,
+    );
+  }
+
+  /// Разбирает QR payload и создаёт обычное pending-приглашение текущему пользователю.
+  /// Сканер камеры позже может передать сюда распознанную строку.
+  QrInviteClaimResult claimQrInvitation(String rawPayload) {
+    final payload = rawPayload.trim();
+    if (payload.isEmpty) {
+      return QrInviteClaimResult.empty;
+    }
+    final parsed = parseGroupInvitePayload(payload);
+    if (parsed == null) {
+      return QrInviteClaimResult.unrecognized;
+    }
+    final group = groupById(parsed.groupId);
+    if (group == null) {
+      return QrInviteClaimResult.unavailable;
+    }
+    if (group.qrInviteToken != parsed.inviteToken) {
+      return QrInviteClaimResult.invalidToken;
+    }
+    if (!group.isActive) {
+      return QrInviteClaimResult.inactive;
+    }
+
+    final userId = currentDemoUserId;
+    final isOrganizer = group.members.any(
+      (member) => member.id == userId && member.role == MemberRole.organizer,
+    );
+    if (isOrganizer) {
+      return QrInviteClaimResult.organizer;
+    }
+    if (group.currentUserIsActiveMember ||
+        _hasInvitation(
+          groupId: group.id,
+          inviteeId: userId,
+          status: InvitationStatus.accepted,
+        )) {
+      return QrInviteClaimResult.alreadyMember;
+    }
+    if (hasPendingInvitation(group.id, userId)) {
+      return QrInviteClaimResult.alreadyPending;
+    }
+
+    if (!group.members.any((member) => member.id == userId)) {
+      group.members.add(
+        GroupMember(
+          id: userId,
+          name: currentDemoUser.name,
+          status: MembershipStatus.invited,
+        ),
+      );
+    }
+    invitations.add(
+      GroupInvitation(
+        id: nextId('invitation'),
+        groupId: group.id,
+        inviterName: group.organizerName,
+        inviteeId: userId,
+        inviteeName: currentDemoUser.name,
+        source: InvitationSource.qrCode,
+        status: InvitationStatus.pending,
+        createdAt: DateTime.now(),
+        expiresAt: group.endsAt,
+      ),
+    );
+    return QrInviteClaimResult.added;
   }
 
   /// Создаёт pending-приглашения для приглашённых и отзывает снятые.
@@ -423,6 +500,63 @@ String buildGroupInvitePayload(GeoGroup group) {
   return 'geo-groups://join'
       '?groupId=${Uri.encodeQueryComponent(group.id)}'
       '&inviteToken=${Uri.encodeQueryComponent(group.qrInviteToken)}';
+}
+
+class GroupInvitePayload {
+  const GroupInvitePayload({required this.groupId, required this.inviteToken});
+
+  final String groupId;
+  final String inviteToken;
+}
+
+enum QrInviteClaimResult {
+  added,
+  empty,
+  unrecognized,
+  unavailable,
+  invalidToken,
+  inactive,
+  organizer,
+  alreadyMember,
+  alreadyPending,
+}
+
+String messageForQrInviteClaim(QrInviteClaimResult result) {
+  return switch (result) {
+    QrInviteClaimResult.added => 'Приглашение добавлено в список.',
+    QrInviteClaimResult.empty => 'Вставьте данные приглашения',
+    QrInviteClaimResult.unrecognized => 'Не удалось распознать приглашение',
+    QrInviteClaimResult.unavailable =>
+      'Приглашение недоступно на этом устройстве',
+    QrInviteClaimResult.invalidToken => 'Приглашение недействительно',
+    QrInviteClaimResult.inactive => 'Срок действия приглашения завершён',
+    QrInviteClaimResult.organizer => 'Организатор уже участвует в этой группе',
+    QrInviteClaimResult.alreadyMember => 'Вы уже участвуете в этой группе',
+    QrInviteClaimResult.alreadyPending => 'Это приглашение уже есть в списке',
+  };
+}
+
+/// Разбирает строку, которую создаёт [buildGroupInvitePayload].
+GroupInvitePayload? parseGroupInvitePayload(String rawPayload) {
+  final uri = Uri.tryParse(rawPayload.trim());
+  if (uri == null || uri.scheme != 'geo-groups' || uri.host != 'join') {
+    return null;
+  }
+  if (uri.path.isNotEmpty && uri.path != '/') {
+    return null;
+  }
+  if (uri.fragment.isNotEmpty || uri.queryParameters.length != 2) {
+    return null;
+  }
+  final groupId = uri.queryParameters['groupId'];
+  final inviteToken = uri.queryParameters['inviteToken'];
+  if (groupId == null ||
+      groupId.isEmpty ||
+      inviteToken == null ||
+      inviteToken.isEmpty) {
+    return null;
+  }
+  return GroupInvitePayload(groupId: groupId, inviteToken: inviteToken);
 }
 
 String memberInitials(String name) {
