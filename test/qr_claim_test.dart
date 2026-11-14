@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:geo_groups/geo_group.dart';
@@ -260,4 +261,103 @@ void main() {
       );
     },
   );
+
+  testWidgets('paste fills the field and does not create an invitation', (
+    tester,
+  ) async {
+    currentDemoUserId = 'dmitry-petrov';
+    final group = addGroup(id: 'qr-paste');
+    final payload = buildGroupInvitePayload(group);
+    final store = GroupsStore.instance;
+    final invitesBefore = store.invitations.length;
+    final badgeBefore = store.pendingInvitationCountFor(currentDemoUserId);
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.getData') {
+          return <String, dynamic>{'text': '  $payload  '};
+        }
+        return null;
+      },
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      );
+    });
+
+    await tester.pumpWidget(const MaterialApp(home: InvitationsScreen()));
+    expect(find.text('Вставить из буфера'), findsOneWidget);
+    await tester.tap(find.text('Вставить из буфера'));
+    await tester.pump();
+
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      payload,
+    );
+    expect(store.invitations.length, invitesBefore);
+    expect(store.pendingInvitationCountFor(currentDemoUserId), badgeBefore);
+    expect(find.text('Встреча qr-paste'), findsNothing);
+    expect(pendingCount(group.id), 0);
+
+    await tester.tap(find.text('Обработать приглашение'));
+    await tester.pump();
+    expect(find.text('Приглашение добавлено в список.'), findsOneWidget);
+    expect(find.text('Встреча qr-paste'), findsOneWidget);
+    expect(find.text('Приглашение по QR-коду'), findsOneWidget);
+    expect(pendingCount(group.id), 1);
+    expect(store.pendingInvitationCountFor('dmitry-petrov'), badgeBefore + 1);
+  });
+
+  testWidgets('empty or unreadable clipboard does not change the field', (
+    tester,
+  ) async {
+    currentDemoUserId = 'olga-sokolova';
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.getData') {
+          return <String, dynamic>{'text': '   '};
+        }
+        return null;
+      },
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      );
+    });
+
+    await tester.pumpWidget(const MaterialApp(home: InvitationsScreen()));
+    await tester.tap(find.text('Вставить из буфера'));
+    await tester.pump();
+    expect(find.text('В буфере обмена нет кода приглашения'), findsOneWidget);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      isEmpty,
+    );
+
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.getData') {
+          throw PlatformException(code: 'clipboard_error');
+        }
+        return null;
+      },
+    );
+    await tester.tap(find.text('Вставить из буфера'));
+    await tester.pump();
+    expect(find.text('Не удалось прочитать буфер обмена'), findsOneWidget);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      isEmpty,
+    );
+  });
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
@@ -103,7 +104,10 @@ void main() {
       ),
       isFalse,
     );
-    expect(group.members.any((member) => member.id == 'anna-smirnova'), isFalse);
+    expect(
+      group.members.any((member) => member.id == 'anna-smirnova'),
+      isFalse,
+    );
     expect(group.qrInviteToken, 'qr-switch-check');
   });
 
@@ -113,9 +117,7 @@ void main() {
       name: 'Пикник в парке',
       createdAt: DateTime.now(),
       endsAt: DateTime.now().add(const Duration(hours: 3)),
-      members: [
-        GroupMember(id: 'maria', name: 'Мария'),
-      ],
+      members: [GroupMember(id: 'maria', name: 'Мария')],
     );
     expect(group.qrInviteToken, 'qr-picnic');
     expect(group.members.single.name, 'Мария');
@@ -130,6 +132,7 @@ void main() {
       name: 'Тестовая встреча',
       endsAt: endsAt,
     );
+    GroupsStore.instance.addGroup(group);
 
     await tester.pumpWidget(
       MaterialApp(
@@ -154,6 +157,10 @@ void main() {
 
     expect(find.text('QR-код приглашения'), findsOneWidget);
     expect(find.text('Тестовая встреча'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('До ${formatGroupDateTime(endsAt)}'),
+      200,
+    );
     expect(find.text('До ${formatGroupDateTime(endsAt)}'), findsOneWidget);
     expect(
       find.text(
@@ -173,15 +180,90 @@ void main() {
       ),
       findsOneWidget,
     );
+    expect(find.text('Скопировать код приглашения'), findsOneWidget);
     expect(find.byType(QrImageView), findsOneWidget);
     final payload = buildGroupInvitePayload(group);
     expect(payload, contains('groupId=active-qr'));
     expect(payload, contains('inviteToken=token-1'));
     expect(payload.contains('Мария'), isFalse);
 
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          final arguments = call.arguments as Map<Object?, Object?>;
+          copied = arguments['text'] as String?;
+        }
+        return null;
+      },
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      );
+    });
+    await tester.tap(find.text('Скопировать код приглашения'));
+    await tester.pump();
+    expect(copied, payload);
+    expect(find.text('Код приглашения скопирован'), findsOneWidget);
+
     await tester.tap(find.text('Готово'));
     await tester.pumpAndSettle();
     expect(find.text('QR-код приглашения'), findsNothing);
+  });
+
+  testWidgets('copy button stays hidden when the group is not active', (
+    tester,
+  ) async {
+    final expired = organizerGroup(
+      id: 'expired-qr',
+      name: 'Завершённая встреча',
+      endsAt: DateTime.now().subtract(const Duration(hours: 2)),
+    );
+    final ended = organizerGroup(
+      id: 'ended-qr-copy',
+      name: 'Остановленная встреча',
+      endsAt: DateTime.now().add(const Duration(days: 1)),
+    );
+    ended.endedByOrganizer = true;
+    final foreign = organizerGroup(
+      id: 'foreign-qr',
+      name: 'Чужая встреча',
+      endsAt: DateTime.now().add(const Duration(days: 1)),
+    );
+    GroupsStore.instance
+      ..addGroup(expired)
+      ..addGroup(ended)
+      ..addGroup(foreign);
+
+    await tester.pumpWidget(MaterialApp(home: QrInviteScreen(group: expired)));
+    expect(find.text('Скопировать код приглашения'), findsNothing);
+
+    await tester.pumpWidget(MaterialApp(home: QrInviteScreen(group: ended)));
+    expect(find.text('Скопировать код приглашения'), findsNothing);
+
+    currentDemoUserId = 'anna-smirnova';
+    await tester.pumpWidget(MaterialApp(home: QrInviteScreen(group: foreign)));
+    expect(find.text('Скопировать код приглашения'), findsNothing);
+  });
+
+  testWidgets('unsaved group does not show the copy button', (tester) async {
+    final group = organizerGroup(
+      id: 'unsaved-copy',
+      name: 'Черновик',
+      endsAt: DateTime.now().add(const Duration(days: 1)),
+      token: 'draft-token',
+    );
+
+    await tester.pumpWidget(MaterialApp(home: QrInviteScreen(group: group)));
+
+    expect(group.isActive, isTrue);
+    expect(group.qrInviteToken, isNotEmpty);
+    expect(group.currentUserIsActiveOrganizer, isTrue);
+    expect(GroupsStore.instance.groupById(group.id), isNull);
+    expect(find.text('Скопировать код приглашения'), findsNothing);
   });
 
   testWidgets('unsaved group does not open a QR code', (tester) async {

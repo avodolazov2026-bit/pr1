@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import 'package:geo_groups/geo_group.dart';
@@ -8,18 +9,40 @@ class QrInviteScreen extends StatelessWidget {
 
   final GeoGroup group;
 
+  bool get _canCopy {
+    final saved = GroupsStore.instance.groupById(group.id);
+    return identical(saved, group) &&
+        group.isActive &&
+        group.qrInviteToken.isNotEmpty &&
+        group.currentUserIsActiveOrganizer;
+  }
+
+  Future<void> _copyPayload(BuildContext context) async {
+    final payload = buildGroupInvitePayload(group);
+    try {
+      await Clipboard.setData(ClipboardData(text: payload));
+    } catch (_) {
+      return;
+    }
+    if (!context.mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Код приглашения скопирован')));
+  }
+
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
     final endsAt = group.endsAt;
+    final canCopy = _canCopy;
     final screenWidth = MediaQuery.sizeOf(context).width;
     final qrSize = (screenWidth - 96).clamp(180.0, 300.0);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('QR-код приглашения'),
-      ),
+      appBar: AppBar(title: const Text('QR-код приглашения')),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(24),
@@ -93,9 +116,23 @@ class QrInviteScreen extends StatelessWidget {
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-          child: FilledButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Готово'),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (canCopy) ...[
+                OutlinedButton.icon(
+                  onPressed: () => _copyPayload(context),
+                  icon: const Icon(Icons.copy_outlined),
+                  label: const Text('Скопировать код приглашения'),
+                ),
+                const SizedBox(height: 12),
+              ],
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Готово'),
+              ),
+            ],
           ),
         ),
       ),

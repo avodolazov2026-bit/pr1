@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/group_invitation.dart';
@@ -17,6 +18,37 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
   void dispose() {
     _payloadController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pastePayload() async {
+    String? text;
+    try {
+      final data = await Clipboard.getData(Clipboard.kTextPlain);
+      text = data?.text?.trim();
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      _showSnackBar('Не удалось прочитать буфер обмена');
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    final pasted = text;
+    if (pasted == null || pasted.isEmpty) {
+      _showSnackBar('В буфере обмена нет кода приглашения');
+      return;
+    }
+    setState(() {
+      _payloadController.text = pasted;
+    });
+  }
+
+  void _showSnackBar(String message) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.clearSnackBars();
+    messenger.showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _claimPayload() {
@@ -148,7 +180,16 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
                 border: OutlineInputBorder(),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _pastePayload,
+                icon: const Icon(Icons.content_paste_outlined),
+                label: const Text('Вставить из буфера'),
+              ),
+            ),
+            const SizedBox(height: 8),
             FilledButton(
               onPressed: _claimPayload,
               child: const Text('Обработать приглашение'),
