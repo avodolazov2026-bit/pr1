@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:geo_groups/geo_coordinate.dart';
 import 'package:geo_groups/group_invitation.dart';
 
 enum MemberRole { organizer, participant }
@@ -89,8 +90,10 @@ class GeoGroup {
     required this.endsAt,
     required this.members,
     this.createdByUserId,
+    List<GroupMemberLocation> memberLocations = const [],
     String? qrInviteToken,
-  }) : qrInviteToken = qrInviteToken ?? 'qr-$id';
+  }) : qrInviteToken = qrInviteToken ?? 'qr-$id',
+       _memberLocations = _memberLocationsFor(members, memberLocations);
 
   final String id;
   String name;
@@ -111,6 +114,12 @@ class GeoGroup {
   /// Момент ручной отмены или завершения. null у старых групп без этой отметки.
   DateTime? endedAt;
   final List<GroupMember> members;
+
+  /// Последние известные позиции участников. Пусто, пока координаты не заданы.
+  final List<GroupMemberLocation> _memberLocations;
+
+  List<GroupMemberLocation> get memberLocations =>
+      List<GroupMemberLocation>.unmodifiable(_memberLocations);
 
   /// Кто создал группу. Общий список групп не делится по пользователям.
   final String? createdByUserId;
@@ -173,7 +182,38 @@ class GeoGroup {
     this.members
       ..clear()
       ..addAll(members);
+    _dropLocationsOfMissingMembers();
     return null;
+  }
+
+  /// Позиция участника или null, если её ещё нет.
+  GroupMemberLocation? memberLocation(String memberId) {
+    for (final location in _memberLocations) {
+      if (location.memberId == memberId) {
+        return location;
+      }
+    }
+    return null;
+  }
+
+  /// Заменяет позицию участника. Участник должен уже состоять в группе.
+  void updateMemberLocation(GroupMemberLocation location) {
+    if (!members.any((member) => member.id == location.memberId)) {
+      throw ArgumentError.value(
+        location.memberId,
+        'location',
+        'Позиция относится к участнику, которого нет в группе',
+      );
+    }
+    _memberLocations.removeWhere((item) => item.memberId == location.memberId);
+    _memberLocations.add(location);
+  }
+
+  void _dropLocationsOfMissingMembers() {
+    final memberIds = members.map((member) => member.id).toSet();
+    _memberLocations.removeWhere(
+      (location) => !memberIds.contains(location.memberId),
+    );
   }
 
   int get activeMemberCount => members
@@ -622,6 +662,7 @@ class GroupsStore {
           member.id == invitation.inviteeId &&
           member.status == MembershipStatus.invited,
     );
+    group?._dropLocationsOfMissingMembers();
   }
 
   List<GeoGroup> createdGroups(GroupPeriod period) {
@@ -886,6 +927,33 @@ GroupMember _invitedCurrentUser() {
   );
 }
 
+List<GroupMemberLocation> _memberLocationsFor(
+  List<GroupMember> members,
+  List<GroupMemberLocation> locations,
+) {
+  final memberIds = members.map((member) => member.id).toSet();
+  final seen = <String>{};
+  final copy = <GroupMemberLocation>[];
+  for (final location in locations) {
+    if (!memberIds.contains(location.memberId)) {
+      throw ArgumentError.value(
+        location.memberId,
+        'memberLocations',
+        'Позиция относится к участнику, которого нет в группе',
+      );
+    }
+    if (!seen.add(location.memberId)) {
+      throw ArgumentError.value(
+        location.memberId,
+        'memberLocations',
+        'У участника может быть только одна позиция',
+      );
+    }
+    copy.add(location);
+  }
+  return copy;
+}
+
 List<GeoGroup> _demoGroups() {
   final now = DateTime.now();
   return [
@@ -900,6 +968,28 @@ List<GeoGroup> _demoGroups() {
         _activeMember(id: 'alexey', name: 'Алексей', distanceMeters: 340),
         _activeMember(id: 'elena', name: 'Елена', distanceMeters: 680),
         _currentUser(),
+      ],
+      memberLocations: [
+        GroupMemberLocation(
+          memberId: 'maria',
+          coordinate: GeoCoordinate(latitude: 55.7558, longitude: 37.6173),
+          updatedAt: now.subtract(const Duration(minutes: 4)),
+        ),
+        GroupMemberLocation(
+          memberId: 'alexey',
+          coordinate: GeoCoordinate(latitude: 55.7601, longitude: 37.6186),
+          updatedAt: now.subtract(const Duration(minutes: 7)),
+        ),
+        GroupMemberLocation(
+          memberId: 'elena',
+          coordinate: GeoCoordinate(latitude: 55.7490, longitude: 37.6050),
+          updatedAt: now.subtract(const Duration(minutes: 11)),
+        ),
+        GroupMemberLocation(
+          memberId: defaultDemoUserId,
+          coordinate: GeoCoordinate(latitude: 55.7539, longitude: 37.6208),
+          updatedAt: now.subtract(const Duration(minutes: 2)),
+        ),
       ],
     ),
     GeoGroup(
