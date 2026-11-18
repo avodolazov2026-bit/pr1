@@ -337,7 +337,7 @@ void main() {
 
     expect(
       find.text('В завершённую группу нельзя приглашать участников'),
-      findsOneWidget,
+      findsNWidgets(2),
     );
     expect(find.text('QR-код приглашения'), findsNothing);
 
@@ -346,4 +346,129 @@ void main() {
     expect(find.text('QR-код приглашения'), findsNothing);
     expect(find.byType(QrImageView), findsNothing);
   });
+
+  testWidgets('share link is available for saved active and planned groups', (
+    tester,
+  ) async {
+    final shared = <({String text, String subject})>[];
+    Future<void> record({required String text, required String subject}) async {
+      shared.add((text: text, subject: subject));
+    }
+
+    final active = organizerGroup(
+      id: 'share-active',
+      name: 'Прогулка',
+      endsAt: DateTime.now().add(const Duration(hours: 3)),
+      token: 'token-active',
+    );
+    final invitesBefore = GroupsStore.instance.invitations.length;
+    final membersBefore = active.members.length;
+
+    await _openInviteSheet(tester, group: active, shareInvite: record);
+    expect(find.text('Поделиться ссылкой'), findsOneWidget);
+    expect(
+      find.text('Отправить приглашение через другое приложение'),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<ListTile>(find.widgetWithText(ListTile, 'Поделиться ссылкой'))
+          .onTap,
+      isNotNull,
+    );
+
+    await tester.tap(find.text('Поделиться ссылкой'));
+    await tester.pumpAndSettle();
+
+    expect(shared, hasLength(1));
+    expect(shared.single.subject, 'Приглашение в Geo Groups');
+    expect(
+      shared.single.text,
+      'Присоединяйтесь к группе «Прогулка» в Geo Groups:\n'
+      '${buildGroupInvitePayload(active)}',
+    );
+    expect(find.text('Пригласить участников'), findsNothing);
+    expect(GroupsStore.instance.invitations, hasLength(invitesBefore));
+    expect(active.members, hasLength(membersBefore));
+    expect(active.qrInviteToken, 'token-active');
+
+    final planned = organizerGroup(
+      id: 'share-planned',
+      name: 'Завтра',
+      startsAt: DateTime.now().add(const Duration(days: 1)),
+      endsAt: DateTime.now().add(const Duration(days: 2)),
+      token: 'token-planned',
+    );
+    expect(planned.isUpcoming, isTrue);
+
+    await _openInviteSheet(tester, group: planned, shareInvite: record);
+    expect(
+      tester
+          .widget<ListTile>(find.widgetWithText(ListTile, 'Поделиться ссылкой'))
+          .onTap,
+      isNotNull,
+    );
+    expect(
+      find.text('Отправить приглашение через другое приложение'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('share link is disabled for a finished group', (tester) async {
+    final group = organizerGroup(
+      id: 'share-finished',
+      name: 'Кино',
+      endsAt: DateTime.now().subtract(const Duration(hours: 2)),
+    );
+    var shares = 0;
+
+    await _openInviteSheet(
+      tester,
+      group: group,
+      shareInvite: ({required String text, required String subject}) async {
+        shares += 1;
+      },
+    );
+
+    final tile = tester.widget<ListTile>(
+      find.widgetWithText(ListTile, 'Поделиться ссылкой'),
+    );
+    expect(tile.onTap, isNull);
+    expect(
+      find.text('В завершённую группу нельзя приглашать участников'),
+      findsWidgets,
+    );
+
+    await tester.tap(find.text('Поделиться ссылкой'), warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(shares, 0);
+    expect(find.text('Ссылка-приглашение'), findsNothing);
+  });
+}
+
+Future<void> _openInviteSheet(
+  WidgetTester tester, {
+  required GeoGroup group,
+  required ShareGroupInvite shareInvite,
+}) async {
+  await tester.pumpWidget(
+    MaterialApp(
+      home: Builder(
+        builder: (context) => Scaffold(
+          body: FilledButton(
+            onPressed: () => showInviteParticipants(
+              context: context,
+              excludedIds: const <String>{},
+              initiallySelectedIds: const <String>{},
+              group: group,
+              shareInvite: shareInvite,
+            ),
+            child: const Text('Пригласить'),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.tap(find.text('Пригласить'));
+  await tester.pumpAndSettle();
 }

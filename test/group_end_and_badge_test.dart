@@ -230,7 +230,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       find.text('В завершённую группу нельзя приглашать участников'),
-      findsOneWidget,
+      findsNWidgets(2),
     );
     expect(find.text('QR-код приглашения'), findsNothing);
   });

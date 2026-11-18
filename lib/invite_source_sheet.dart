@@ -1,16 +1,30 @@
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/invite_people_sheet.dart';
 import 'package:geo_groups/qr_invite_screen.dart';
 
-enum _InviteChannel { demoList, contacts, qrCode }
+enum _InviteChannel { demoList, contacts, qrCode, shareLink }
+
+typedef ShareGroupInvite = Future<void> Function({
+  required String text,
+  required String subject,
+});
+
+Future<void> shareGroupInvite({
+  required String text,
+  required String subject,
+}) async {
+  await SharePlus.instance.share(ShareParams(text: text, subject: subject));
+}
 
 Future<List<DirectoryPerson>?> showInviteParticipants({
   required BuildContext context,
   required Set<String> excludedIds,
   required Set<String> initiallySelectedIds,
   GeoGroup? group,
+  ShareGroupInvite? shareInvite,
 }) async {
   final channel = await showModalBottomSheet<_InviteChannel>(
     context: context,
@@ -80,7 +94,39 @@ Future<List<DirectoryPerson>?> showInviteParticipants({
         ),
       );
       return null;
+    case _InviteChannel.shareLink:
+      if (group == null) {
+        await _showNotice(
+          context,
+          title: 'Ссылка-приглашение',
+          message:
+              'Сначала сохраните группу, чтобы создать ссылку-приглашение.',
+        );
+        return null;
+      }
+      if (group.isFinished) {
+        await _showNotice(
+          context,
+          title: 'Ссылка-приглашение',
+          message: 'В завершённую группу нельзя приглашать участников.',
+        );
+        return null;
+      }
+      if (!group.currentUserIsActiveOrganizer || !context.mounted) {
+        return null;
+      }
+      final share = shareInvite ?? shareGroupInvite;
+      await share(
+        text: _inviteShareText(group),
+        subject: 'Приглашение в Geo Groups',
+      );
+      return null;
   }
+}
+
+String _inviteShareText(GeoGroup group) {
+  return 'Присоединяйтесь к группе «${group.name}» в Geo Groups:\n'
+      '${buildGroupInvitePayload(group)}';
 }
 
 Future<void> _showNotice(
@@ -153,6 +199,20 @@ class _InviteSourceSheet extends StatelessWidget {
             ),
             onTap: canOpenQr && !savedAndFinished
                 ? () => Navigator.of(context).pop(_InviteChannel.qrCode)
+                : null,
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            enabled: canOpenQr && !savedAndFinished,
+            leading: const Icon(Icons.ios_share_outlined),
+            title: const Text('Поделиться ссылкой'),
+            subtitle: Text(
+              savedAndFinished
+                  ? 'В завершённую группу нельзя приглашать участников'
+                  : 'Отправить приглашение через другое приложение',
+            ),
+            onTap: canOpenQr && !savedAndFinished
+                ? () => Navigator.of(context).pop(_InviteChannel.shareLink)
                 : null,
           ),
         ],
