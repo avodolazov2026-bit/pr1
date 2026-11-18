@@ -50,10 +50,13 @@ void main() {
       endsAt: DateTime.now().add(const Duration(days: 1)),
       token: 'token-walk',
     );
-    expect(
-      buildGroupInvitePayload(group),
-      'geo-groups://join?groupId=walk&inviteToken=token-walk',
-    );
+    final link = buildGroupInviteLink(group);
+    expect(link, 'geo-groups://join?groupId=walk&inviteToken=token-walk');
+    expect(buildGroupInvitePayload(group), link);
+    final parsed = parseGroupInvitePayload(link);
+    expect(parsed, isNotNull);
+    expect(parsed!.groupId, group.id);
+    expect(parsed.inviteToken, group.qrInviteToken);
     expect(group.qrInviteToken, 'token-walk');
 
     group.updateDetails(
@@ -192,7 +195,7 @@ void main() {
     );
     expect(find.text('Скопировать код приглашения'), findsOneWidget);
     expect(find.byType(QrImageView), findsOneWidget);
-    final payload = buildGroupInvitePayload(group);
+    final payload = buildGroupInviteLink(group);
     expect(payload, contains('groupId=active-qr'));
     expect(payload, contains('inviteToken=token-1'));
     expect(payload.contains('Мария'), isFalse);
@@ -385,7 +388,7 @@ void main() {
     expect(
       shared.single.text,
       'Присоединяйтесь к группе «Прогулка» в Geo Groups:\n'
-      '${buildGroupInvitePayload(active)}',
+      '${buildGroupInviteLink(active)}',
     );
     expect(find.text('Пригласить участников'), findsNothing);
     expect(GroupsStore.instance.invitations, hasLength(invitesBefore));

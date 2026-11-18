@@ -723,10 +723,15 @@ DateTime _finishedSortKey(GeoGroup group) =>
     group.endedAt ?? group.endsAt ?? group.startsAt;
 
 /// Локальная схема приглашения. Позже её можно заменить на HTTPS-ссылку.
-String buildGroupInvitePayload(GeoGroup group) {
+String buildGroupInviteLink(GeoGroup group) {
   return 'geo-groups://join'
       '?groupId=${Uri.encodeQueryComponent(group.id)}'
       '&inviteToken=${Uri.encodeQueryComponent(group.qrInviteToken)}';
+}
+
+/// @deprecated Используйте buildGroupInviteLink.
+String buildGroupInvitePayload(GeoGroup group) {
+  return buildGroupInviteLink(group);
 }
 
 class GroupInvitePayload {
@@ -770,7 +775,7 @@ String messageForQrInviteClaim(QrInviteClaimResult result) {
   };
 }
 
-/// Разбирает строку, которую создаёт [buildGroupInvitePayload].
+/// Разбирает строку, которую создаёт [buildGroupInviteLink].
 GroupInvitePayload? parseGroupInvitePayload(String rawPayload) {
   final uri = Uri.tryParse(rawPayload.trim());
   if (uri == null || uri.scheme != 'geo-groups' || uri.host != 'join') {

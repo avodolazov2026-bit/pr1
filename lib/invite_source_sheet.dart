@@ -126,7 +126,7 @@ Future<List<DirectoryPerson>?> showInviteParticipants({
 
 String _inviteShareText(GeoGroup group) {
   return 'Присоединяйтесь к группе «${group.name}» в Geo Groups:\n'
-      '${buildGroupInvitePayload(group)}';
+      '${buildGroupInviteLink(group)}';
 }
 
 Future<void> _showNotice(

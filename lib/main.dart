@@ -1,21 +1,140 @@
+import 'dart:async';
+
+import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 
+import 'package:geo_groups/app_link_handler.dart';
 import 'package:geo_groups/created_groups_screen.dart';
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/invitations_screen.dart';
+import 'package:geo_groups/join_group_route.dart';
 import 'package:geo_groups/my_groups_screen.dart';
 import 'package:geo_groups/profile_screen.dart';
+
+final appNavigatorKey = GlobalKey<NavigatorState>();
 
 void main() {
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+abstract class InviteLinkSource {
+  Future<Uri?> initialLink();
+
+  Stream<Uri> get uriStream;
+}
+
+class AppLinksInviteSource implements InviteLinkSource {
+  AppLinksInviteSource({AppLinks? links}) : _links = links ?? AppLinks();
+
+  final AppLinks _links;
+
+  @override
+  Future<Uri?> initialLink() => _links.getInitialLink();
+
+  @override
+  Stream<Uri> get uriStream => _links.uriLinkStream;
+}
+
+class MyApp extends StatefulWidget {
+  const MyApp({super.key, this.inviteLinks});
+
+  final InviteLinkSource? inviteLinks;
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  StreamSubscription<Uri>? _linkSubscription;
+  String? _openInvitePayload;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _startInviteLinks();
+    });
+  }
+
+  @override
+  void dispose() {
+    _linkSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _startInviteLinks() async {
+    if (!mounted) {
+      return;
+    }
+    final source = widget.inviteLinks ?? AppLinksInviteSource();
+    try {
+      _linkSubscription = source.uriStream.listen(
+        _openInviteLink,
+        onError: (_) {},
+      );
+    } catch (_) {}
+    if (!mounted) {
+      return;
+    }
+    try {
+      final initial = await source.initialLink();
+      if (!mounted) {
+        return;
+      }
+      if (initial != null) {
+        await _openInviteLink(initial);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _openInviteLink(Uri uri) async {
+    final resolution = resolveGroupInviteLink(uri);
+    final navigator = appNavigatorKey.currentState;
+    final context = navigator?.overlay?.context;
+    if (!mounted || navigator == null || context == null || !context.mounted) {
+      return;
+    }
+    if (_openInvitePayload != null && isGroupJoinLink(uri)) {
+      return;
+    }
+    final message = resolution.message;
+    if (resolution.kind == GroupInviteLinkKind.rejected && message != null) {
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.clearSnackBars();
+      messenger.showSnackBar(SnackBar(content: Text(message)));
+      return;
+    }
+    final group = resolution.group;
+    final payload = resolution.payload;
+    if (!resolution.opensConfirmation || group == null || payload == null) {
+      return;
+    }
+    _openInvitePayload = payload;
+    try {
+      await openJoinGroupConfirmation(
+        context: context,
+        group: group,
+        onJoin: (name, avatarId) {
+          return Future.value(
+            GroupsStore.instance.joinFromQrPayload(
+              payload,
+              displayName: name,
+              avatarId: avatarId,
+            ),
+          );
+        },
+      );
+    } finally {
+      if (_openInvitePayload == payload) {
+        _openInvitePayload = null;
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: appNavigatorKey,
       title: 'Geo Groups',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
@@ -34,6 +153,24 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  @override
+  void initState() {
+    super.initState();
+    groupFlowRevision.addListener(_onGroupFlowChanged);
+  }
+
+  @override
+  void dispose() {
+    groupFlowRevision.removeListener(_onGroupFlowChanged);
+    super.dispose();
+  }
+
+  void _onGroupFlowChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   Future<void> _switchDemoUser() async {
     final selectedId = await showModalBottomSheet<String>(
       context: context,

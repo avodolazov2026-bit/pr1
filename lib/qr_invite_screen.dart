@@ -18,7 +18,7 @@ class QrInviteScreen extends StatelessWidget {
   }
 
   Future<void> _copyPayload(BuildContext context) async {
-    final payload = buildGroupInvitePayload(group);
+    final payload = buildGroupInviteLink(group);
     try {
       await Clipboard.setData(ClipboardData(text: payload));
     } catch (_) {
@@ -56,7 +56,7 @@ class QrInviteScreen extends StatelessWidget {
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: QrImageView(
-                    data: buildGroupInvitePayload(group),
+                    data: buildGroupInviteLink(group),
                     version: QrVersions.auto,
                     size: qrSize,
                     backgroundColor: Colors.white,

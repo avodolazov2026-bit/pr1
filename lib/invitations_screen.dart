@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/group_invitation.dart';
-import 'package:geo_groups/join_group_confirmation_screen.dart';
+import 'package:geo_groups/join_group_route.dart';
 
 class InvitationsScreen extends StatefulWidget {
   const InvitationsScreen({super.key});
@@ -16,9 +16,22 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
   final _payloadController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    groupFlowRevision.addListener(_onGroupFlowChanged);
+  }
+
+  @override
   void dispose() {
+    groupFlowRevision.removeListener(_onGroupFlowChanged);
     _payloadController.dispose();
     super.dispose();
+  }
+
+  void _onGroupFlowChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Future<void> _pastePayload() async {
@@ -89,26 +102,12 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
       String avatarId,
     )
     onJoin,
-  }) async {
-    final user = currentDemoUser;
-    final joined = await Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(
-        builder: (context) => JoinGroupConfirmationScreen(
-          group: group,
-          userId: user.id,
-          fallbackName: user.name,
-          onJoin: onJoin,
-        ),
-      ),
+  }) {
+    return openJoinGroupConfirmation(
+      context: context,
+      group: group,
+      onJoin: onJoin,
     );
-    if (!mounted) {
-      return false;
-    }
-    setState(() {});
-    if (joined == true) {
-      _showSnackBar('Вы вступили в группу');
-    }
-    return joined == true;
   }
 
   Future<void> _decline(GroupInvitation invitation) async {
