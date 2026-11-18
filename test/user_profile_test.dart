@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/user_profile.dart';
 
 void main() {

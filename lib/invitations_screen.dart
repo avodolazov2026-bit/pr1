@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/group_invitation.dart';
+import 'package:geo_groups/join_group_confirmation_screen.dart';
 
 class InvitationsScreen extends StatefulWidget {
   const InvitationsScreen({super.key});
@@ -51,19 +52,63 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
     messenger.showSnackBar(SnackBar(content: Text(message)));
   }
 
-  void _claimPayload() {
-    final result = GroupsStore.instance.claimQrInvitation(
-      _payloadController.text,
+  Future<void> _claimPayload() async {
+    final payload = _payloadController.text;
+    final inspection = GroupsStore.instance.inspectQrInvitation(payload);
+    final group = inspection.group;
+    final canConfirm =
+        group != null &&
+        (inspection.result == QrInviteClaimResult.added ||
+            inspection.result == QrInviteClaimResult.alreadyPending);
+    if (!canConfirm) {
+      setState(() {});
+      _showSnackBar(messageForQrInviteClaim(inspection.result));
+      return;
+    }
+    final joined = await _openJoin(
+      group: group,
+      onJoin: (name, avatarId) {
+        return Future.value(
+          GroupsStore.instance.joinFromQrPayload(
+            payload,
+            displayName: name,
+            avatarId: avatarId,
+          ),
+        );
+      },
     );
-    if (result == QrInviteClaimResult.added) {
-      _payloadController.clear();
+    if (joined && mounted) {
+      setState(() => _payloadController.clear());
+    }
+  }
+
+  Future<bool> _openJoin({
+    required GeoGroup group,
+    required Future<InvitationAcceptResult> Function(
+      String name,
+      String avatarId,
+    )
+    onJoin,
+  }) async {
+    final user = currentDemoUser;
+    final joined = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (context) => JoinGroupConfirmationScreen(
+          group: group,
+          userId: user.id,
+          fallbackName: user.name,
+          onJoin: onJoin,
+        ),
+      ),
+    );
+    if (!mounted) {
+      return false;
     }
     setState(() {});
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.clearSnackBars();
-    messenger.showSnackBar(
-      SnackBar(content: Text(messageForQrInviteClaim(result))),
-    );
+    if (joined == true) {
+      _showSnackBar('Вы вступили в группу');
+    }
+    return joined == true;
   }
 
   Future<void> _decline(GroupInvitation invitation) async {
@@ -104,49 +149,17 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
       return;
     }
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Присоединиться к группе?'),
-          content: Text(
-            group.isUpcoming
-                ? 'Группа ещё не началась. После присоединения вы станете участником, но карта и геолокация откроются только после начала группы.'
-                : group.isIndefinite
-                ? 'Группа бессрочная. После присоединения вы сможете видеть геолокацию участников и делиться своей геолокацией. Вы сможете покинуть группу в любое время.'
-                : 'После присоединения вы сможете видеть геолокацию участников группы и делиться своей геолокацией до окончания срока группы. Разрешение геолокации будет запрошено отдельно.',
+    await _openJoin(
+      group: group,
+      onJoin: (name, avatarId) {
+        return Future.value(
+          GroupsStore.instance.acceptInvitation(
+            invitation,
+            displayName: name,
+            avatarId: avatarId,
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Отмена'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('Присоединиться'),
-            ),
-          ],
         );
       },
-    );
-    if (confirmed != true || !mounted) {
-      return;
-    }
-
-    final result = GroupsStore.instance.acceptInvitation(invitation);
-    if (!mounted) {
-      return;
-    }
-    setState(() {});
-    if (result != InvitationAcceptResult.joined) {
-      return;
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Вы присоединились к группе. Запрос геолокации будет добавлен позже.',
-        ),
-      ),
     );
   }
 

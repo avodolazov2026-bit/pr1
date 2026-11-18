@@ -49,17 +49,28 @@ DirectoryPerson get currentDemoUser {
   return demoUsers.first;
 }
 
+const defaultAvatarId = 'teal_person';
+
 class GroupMember {
   GroupMember({
     required this.id,
     required this.name,
+    this.avatarId = defaultAvatarId,
     this.role = MemberRole.participant,
     this.status = MembershipStatus.active,
     this.distanceMeters,
   });
 
   final String id;
-  final String name;
+
+  /// Имя, выбранное для этой группы. Не следует за последующими правками профиля.
+  String name;
+
+  /// Аватар, выбранный для этой группы.
+  String avatarId;
+
+  /// Снимок аватара для отображения. Пустое значение заменяется пресетом.
+  String get displayAvatarId => avatarId.isEmpty ? defaultAvatarId : avatarId;
   final MemberRole role;
   MembershipStatus status;
 
@@ -378,26 +389,25 @@ class GroupsStore {
     );
   }
 
-  /// Разбирает QR payload и создаёт обычное pending-приглашение текущему пользователю.
-  /// Сканер камеры позже может передать сюда распознанную строку.
-  QrInviteClaimResult claimQrInvitation(String rawPayload) {
+  /// Проверяет QR payload и не меняет участников или приглашения.
+  QrInviteInspection inspectQrInvitation(String rawPayload) {
     final payload = rawPayload.trim();
     if (payload.isEmpty) {
-      return QrInviteClaimResult.empty;
+      return const QrInviteInspection(QrInviteClaimResult.empty);
     }
     final parsed = parseGroupInvitePayload(payload);
     if (parsed == null) {
-      return QrInviteClaimResult.unrecognized;
+      return const QrInviteInspection(QrInviteClaimResult.unrecognized);
     }
     final group = groupById(parsed.groupId);
     if (group == null) {
-      return QrInviteClaimResult.unavailable;
+      return const QrInviteInspection(QrInviteClaimResult.unavailable);
     }
     if (group.qrInviteToken != parsed.inviteToken) {
-      return QrInviteClaimResult.invalidToken;
+      return QrInviteInspection(QrInviteClaimResult.invalidToken, group);
     }
     if (group.isFinished) {
-      return QrInviteClaimResult.inactive;
+      return QrInviteInspection(QrInviteClaimResult.inactive, group);
     }
 
     final userId = currentDemoUserId;
@@ -405,7 +415,7 @@ class GroupsStore {
       (member) => member.id == userId && member.role == MemberRole.organizer,
     );
     if (isOrganizer) {
-      return QrInviteClaimResult.organizer;
+      return QrInviteInspection(QrInviteClaimResult.organizer, group);
     }
     if (group.currentUserIsActiveMember ||
         _hasInvitation(
@@ -413,12 +423,23 @@ class GroupsStore {
           inviteeId: userId,
           status: InvitationStatus.accepted,
         )) {
-      return QrInviteClaimResult.alreadyMember;
+      return QrInviteInspection(QrInviteClaimResult.alreadyMember, group);
     }
     if (hasPendingInvitation(group.id, userId)) {
-      return QrInviteClaimResult.alreadyPending;
+      return QrInviteInspection(QrInviteClaimResult.alreadyPending, group);
     }
+    return QrInviteInspection(QrInviteClaimResult.added, group);
+  }
 
+  /// Разбирает QR payload и создаёт обычное pending-приглашение текущему пользователю.
+  /// Сканер камеры позже может передать сюда распознанную строку.
+  QrInviteClaimResult claimQrInvitation(String rawPayload) {
+    final inspection = inspectQrInvitation(rawPayload);
+    if (inspection.result != QrInviteClaimResult.added) {
+      return inspection.result;
+    }
+    final group = inspection.group!;
+    final userId = currentDemoUserId;
     if (!group.members.any((member) => member.id == userId)) {
       group.members.add(
         GroupMember(
@@ -442,6 +463,58 @@ class GroupsStore {
       ),
     );
     return QrInviteClaimResult.added;
+  }
+
+  /// Вступает по уже проверенному QR после подтверждения имени и аватара.
+  InvitationAcceptResult joinFromQrPayload(
+    String rawPayload, {
+    required String displayName,
+    required String avatarId,
+  }) {
+    if (displayName.trim().isEmpty) {
+      return InvitationAcceptResult.notPending;
+    }
+    final inspection = inspectQrInvitation(rawPayload);
+    if (inspection.result == QrInviteClaimResult.added) {
+      final claimed = claimQrInvitation(rawPayload);
+      if (claimed != QrInviteClaimResult.added &&
+          claimed != QrInviteClaimResult.alreadyPending) {
+        return _acceptResultForQr(claimed);
+      }
+    } else if (inspection.result != QrInviteClaimResult.alreadyPending) {
+      return _acceptResultForQr(inspection.result);
+    }
+
+    final group = inspection.group;
+    if (group == null) {
+      return InvitationAcceptResult.missingGroup;
+    }
+    GroupInvitation? invitation;
+    for (final candidate in invitations) {
+      if (candidate.groupId == group.id &&
+          candidate.inviteeId == currentDemoUserId &&
+          candidate.status == InvitationStatus.pending) {
+        invitation = candidate;
+        break;
+      }
+    }
+    if (invitation == null) {
+      return InvitationAcceptResult.notPending;
+    }
+    return acceptInvitation(
+      invitation,
+      displayName: displayName,
+      avatarId: avatarId,
+    );
+  }
+
+  InvitationAcceptResult _acceptResultForQr(QrInviteClaimResult result) {
+    return switch (result) {
+      QrInviteClaimResult.alreadyMember => InvitationAcceptResult.alreadyMember,
+      QrInviteClaimResult.inactive => InvitationAcceptResult.groupEnded,
+      QrInviteClaimResult.unavailable => InvitationAcceptResult.missingGroup,
+      _ => InvitationAcceptResult.notPending,
+    };
   }
 
   /// Создаёт pending-приглашения для приглашённых и отзывает снятые.
@@ -484,7 +557,14 @@ class GroupsStore {
     }
   }
 
-  InvitationAcceptResult acceptInvitation(GroupInvitation invitation) {
+  InvitationAcceptResult acceptInvitation(
+    GroupInvitation invitation, {
+    String? displayName,
+    String? avatarId,
+  }) {
+    if (displayName != null && displayName.trim().isEmpty) {
+      return InvitationAcceptResult.notPending;
+    }
     if (invitation.status != InvitationStatus.pending) {
       return InvitationAcceptResult.notPending;
     }
@@ -506,17 +586,27 @@ class GroupsStore {
       return InvitationAcceptResult.alreadyMember;
     }
 
+    final resolvedName = displayName == null
+        ? invitation.inviteeName
+        : displayName.trim();
+    final resolvedAvatar = avatarId == null || avatarId.isEmpty
+        ? defaultAvatarId
+        : avatarId;
     invitation.status = InvitationStatus.accepted;
     if (member == null) {
       group.members.add(
         GroupMember(
           id: invitation.inviteeId,
-          name: invitation.inviteeName,
+          name: resolvedName,
+          avatarId: resolvedAvatar,
           status: MembershipStatus.active,
         ),
       );
     } else if (member.status == MembershipStatus.invited) {
-      member.status = MembershipStatus.active;
+      member
+        ..name = resolvedName
+        ..avatarId = resolvedAvatar
+        ..status = MembershipStatus.active;
     }
     return InvitationAcceptResult.joined;
   }
@@ -656,6 +746,13 @@ enum QrInviteClaimResult {
   organizer,
   alreadyMember,
   alreadyPending,
+}
+
+class QrInviteInspection {
+  const QrInviteInspection(this.result, [this.group]);
+
+  final QrInviteClaimResult result;
+  final GeoGroup? group;
 }
 
 String messageForQrInviteClaim(QrInviteClaimResult result) {

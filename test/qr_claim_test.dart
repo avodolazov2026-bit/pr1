@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/group_invitation.dart';
@@ -224,6 +225,7 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       await tester.pumpWidget(const MaterialApp(home: InvitationsScreen()));
 
+      SharedPreferences.setMockInitialValues({});
       expect(find.text('Получить приглашение по коду'), findsOneWidget);
       expect(find.text('Сканировать QR'), findsNothing);
       await tester.enterText(
@@ -231,39 +233,52 @@ void main() {
         buildGroupInvitePayload(group),
       );
       await tester.tap(find.text('Обработать приглашение'));
-      await tester.pump();
+      await tester.pumpAndSettle();
 
-      expect(find.text('Приглашение добавлено в список.'), findsOneWidget);
+      expect(find.text('Вступление в группу'), findsOneWidget);
       expect(find.text('Встреча qr-screen'), findsOneWidget);
-      expect(find.text('Приглашение по QR-коду'), findsOneWidget);
       expect(find.text('Сергей'), findsNothing);
       expect(find.textContaining('120'), findsNothing);
       expect(find.text('Открыть карту'), findsNothing);
+      expect(
+        GroupsStore.instance.myGroups.any((item) => item.id == group.id),
+        isFalse,
+      );
+      expect(pendingCount(group.id), 0);
+
+      await tester.tap(find.text('Отмена'));
+      await tester.pumpAndSettle();
       expect(find.byType(InvitationsScreen), findsOneWidget);
       expect(
         GroupsStore.instance.myGroups.any((item) => item.id == group.id),
         isFalse,
       );
 
-      await tester.enterText(
-        find.byType(TextField),
-        buildGroupInvitePayload(group),
-      );
       await tester.tap(find.text('Обработать приглашение'));
-      await tester.pump();
-      expect(find.text('Это приглашение уже есть в списке'), findsOneWidget);
-      expect(pendingCount(group.id), 1);
-
-      await tester.tap(find.text('Присоединиться'));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(TextButton, 'Присоединиться'));
+      await tester.tap(find.text('Вступить в группу'));
       await tester.pumpAndSettle();
-      expect(find.text('Встреча qr-screen'), findsNothing);
+      expect(find.text('Вы вступили в группу'), findsOneWidget);
+      expect(find.text('Вступление в группу'), findsNothing);
       expect(pendingCount(group.id), 0);
       expect(
         GroupsStore.instance.myGroups.any((item) => item.id == group.id),
         isTrue,
       );
+      final member = group.members.singleWhere(
+        (item) => item.id == currentDemoUserId,
+      );
+      expect(member.name, currentDemoUser.name);
+      expect(member.avatarId, defaultAvatarId);
+
+      await tester.enterText(
+        find.byType(TextField),
+        buildGroupInvitePayload(group),
+      );
+      await tester.tap(find.text('Обработать приглашение'));
+      await tester.pumpAndSettle();
+      expect(find.text('Вы уже участвуете в этой группе'), findsOneWidget);
+      expect(find.text('Вступление в группу'), findsNothing);
     },
   );
 
@@ -296,6 +311,7 @@ void main() {
       );
     });
 
+    SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(const MaterialApp(home: InvitationsScreen()));
     expect(find.text('Вставить из буфера'), findsOneWidget);
     await tester.tap(find.text('Вставить из буфера'));
@@ -311,12 +327,15 @@ void main() {
     expect(pendingCount(group.id), 0);
 
     await tester.tap(find.text('Обработать приглашение'));
-    await tester.pump();
-    expect(find.text('Приглашение добавлено в список.'), findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(find.text('Вступление в группу'), findsOneWidget);
     expect(find.text('Встреча qr-paste'), findsOneWidget);
-    expect(find.text('Приглашение по QR-коду'), findsOneWidget);
-    expect(pendingCount(group.id), 1);
-    expect(store.pendingInvitationCountFor('dmitry-petrov'), badgeBefore + 1);
+    expect(pendingCount(group.id), 0);
+    expect(store.invitations.length, invitesBefore);
+    await tester.tap(find.text('Отмена'));
+    await tester.pumpAndSettle();
+    expect(pendingCount(group.id), 0);
+    expect(store.pendingInvitationCountFor('dmitry-petrov'), badgeBefore);
   });
 
   testWidgets('empty or unreadable clipboard does not change the field', (

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:geo_groups/edit_group_screen.dart';
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/group_map_screen.dart';
+import 'package:geo_groups/user_profile.dart';
 
 class GroupScreen extends StatefulWidget {
   const GroupScreen({super.key, required this.group, this.onChanged});
@@ -168,7 +169,11 @@ class _GroupScreenState extends State<GroupScreen> {
             for (final member in participants)
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: CircleAvatar(child: Text(memberInitials(member.name))),
+                leading: ProfileAvatar(
+                  avatarId: member.displayAvatarId,
+                  displayName: member.name,
+                  radius: 20,
+                ),
                 title: Text(member.name),
                 trailing: group.canUseMap && member.distanceMeters != null
                     ? Text('${member.distanceMeters} м')
@@ -181,8 +186,10 @@ class _GroupScreenState extends State<GroupScreen> {
               for (final member in invited)
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: CircleAvatar(
-                    child: Text(memberInitials(member.name)),
+                  leading: ProfileAvatar(
+                    avatarId: member.displayAvatarId,
+                    displayName: member.name,
+                    radius: 20,
                   ),
                   title: Text(member.name),
                   trailing: Text(

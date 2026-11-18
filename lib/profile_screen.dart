@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/user_profile.dart';
 
 class ProfileScreen extends StatefulWidget {

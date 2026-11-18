@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/group_schedule_form.dart';
 import 'package:geo_groups/invite_source_sheet.dart';
+import 'package:geo_groups/user_profile.dart';
 
 class EditGroupScreen extends StatefulWidget {
   const EditGroupScreen({super.key, required this.group});
@@ -356,6 +357,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
       }
     }
     final organizerName = organizer?.name ?? currentDemoUser.name;
+    final organizerMember = organizer?.persisted;
     final activeMembers = _members.where(
       (member) =>
           member.status == MembershipStatus.active && !member.isOrganizer,
@@ -479,13 +481,24 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
             const SizedBox(height: 4),
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: CircleAvatar(child: Text(memberInitials(organizerName))),
+              leading: organizerMember == null
+                  ? CircleAvatar(child: Text(memberInitials(organizerName)))
+                  : ProfileAvatar(
+                      avatarId: organizerMember.displayAvatarId,
+                      displayName: organizerMember.name,
+                      radius: 20,
+                    ),
               title: Text('$organizerName — организатор'),
             ),
             for (final member in activeMembers)
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: CircleAvatar(child: Text(memberInitials(member.name))),
+                leading: ProfileAvatar(
+                  avatarId:
+                      member.persisted?.displayAvatarId ?? defaultAvatarId,
+                  displayName: member.name,
+                  radius: 20,
+                ),
                 title: Text(member.name),
                 subtitle: Text(
                   'Участник',
@@ -506,8 +519,11 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
               for (final member in invited)
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: CircleAvatar(
-                    child: Text(memberInitials(member.name)),
+                  leading: ProfileAvatar(
+                    avatarId:
+                        member.persisted?.displayAvatarId ?? defaultAvatarId,
+                    displayName: member.name,
+                    radius: 20,
                   ),
                   title: Text(member.name),
                   subtitle: Text(

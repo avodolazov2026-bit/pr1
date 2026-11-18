@@ -15,8 +15,6 @@ class UserProfile {
   final String avatarId;
 }
 
-const defaultAvatarId = 'teal_person';
-
 class ProfileAvatarOption {
   const ProfileAvatarOption({
     required this.id,
