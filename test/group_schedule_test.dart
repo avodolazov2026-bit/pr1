@@ -458,7 +458,7 @@ void main() {
       findsNothing,
     );
     expect(
-      find.text('Карта станет доступна после начала группы'),
+      find.text('Карта доступна только в активной группе.'),
       findsOneWidget,
     );
 
@@ -470,11 +470,9 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: GroupScreen(group: active)));
     expect(find.text('Открыть карту'), findsOneWidget);
     await tester.tap(find.text('Открыть карту'));
-    await tester.pumpAndSettle();
-    expect(
-      find.text('Карта участников будет добавлена на следующем этапе'),
-      findsOneWidget,
-    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Тестовая точка на карте'), findsOneWidget);
     Navigator.of(tester.element(find.text('Карта группы'))).pop();
     await tester.pumpAndSettle();
 
@@ -486,7 +484,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: GroupMapScreen(group: finished)));
     await tester.pumpAndSettle();
     expect(
-      find.text('Карта недоступна для завершённой группы'),
+      find.text('Карта доступна только в активной группе.'),
       findsOneWidget,
     );
     expect(find.text('Открыть карту'), findsNothing);
@@ -621,84 +619,82 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-    'the open list becomes active when the status timer fires',
-    (tester) async {
-      currentDemoUserId = 'status-timer-user';
-      final startsAt = DateTime.now().add(const Duration(seconds: 1));
-      final group = buildGroup(
-        id: 'status-timer',
-        startsAt: startsAt,
-        endsAt: startsAt.add(const Duration(hours: 2)),
-        memberId: currentDemoUserId,
-        role: MemberRole.participant,
-      );
-      group.name = 'Таймер статуса';
-      GroupsStore.instance.addGroup(group);
+  testWidgets('the open list becomes active when the status timer fires', (
+    tester,
+  ) async {
+    currentDemoUserId = 'status-timer-user';
+    final startsAt = DateTime.now().add(const Duration(seconds: 1));
+    final group = buildGroup(
+      id: 'status-timer',
+      startsAt: startsAt,
+      endsAt: startsAt.add(const Duration(hours: 2)),
+      memberId: currentDemoUserId,
+      role: MemberRole.participant,
+    );
+    group.name = 'Таймер статуса';
+    GroupsStore.instance.addGroup(group);
 
-      await tester.pumpWidget(const MaterialApp(home: MyGroupsScreen()));
-      expect(find.text('Запланирована'), findsOneWidget);
-      expect(find.text('Активна'), findsNothing);
+    await tester.pumpWidget(const MaterialApp(home: MyGroupsScreen()));
+    expect(find.text('Запланирована'), findsOneWidget);
+    expect(find.text('Активна'), findsNothing);
 
-      await tester.runAsync(() async {
-        final wait =
-            startsAt.difference(DateTime.now()) +
-            const Duration(milliseconds: 50);
-        if (wait > Duration.zero) {
-          await Future<void>.delayed(wait);
-        }
-      });
-      await tester.pump(const Duration(minutes: 5));
+    await tester.runAsync(() async {
+      final wait =
+          startsAt.difference(DateTime.now()) +
+          const Duration(milliseconds: 50);
+      if (wait > Duration.zero) {
+        await Future<void>.delayed(wait);
+      }
+    });
+    await tester.pump(const Duration(minutes: 5));
 
-      expect(find.text('Мои группы'), findsOneWidget);
-      expect(find.text('Запланирована'), findsNothing);
-      expect(find.text('Активна'), findsOneWidget);
-      expect(find.text('Активные'), findsOneWidget);
-    },
-  );
+    expect(find.text('Мои группы'), findsOneWidget);
+    expect(find.text('Запланирована'), findsNothing);
+    expect(find.text('Активна'), findsOneWidget);
+    expect(find.text('Активные'), findsOneWidget);
+  });
 
-  testWidgets(
-    'created groups become active when the status timer fires',
-    (tester) async {
-      currentDemoUserId = 'created-timer-user';
-      final startsAt = DateTime.now().add(const Duration(seconds: 1));
-      final group = GeoGroup(
-        id: 'created-status-timer',
-        name: 'Созданная по таймеру',
-        createdAt: DateTime.now(),
-        startsAt: startsAt,
-        endsAt: startsAt.add(const Duration(hours: 2)),
-        createdByUserId: currentDemoUserId,
-        members: [
-          GroupMember(
-            id: currentDemoUserId,
-            name: 'Организатор',
-            role: MemberRole.organizer,
-          ),
-        ],
-      );
-      GroupsStore.instance.addGroup(group);
+  testWidgets('created groups become active when the status timer fires', (
+    tester,
+  ) async {
+    currentDemoUserId = 'created-timer-user';
+    final startsAt = DateTime.now().add(const Duration(seconds: 1));
+    final group = GeoGroup(
+      id: 'created-status-timer',
+      name: 'Созданная по таймеру',
+      createdAt: DateTime.now(),
+      startsAt: startsAt,
+      endsAt: startsAt.add(const Duration(hours: 2)),
+      createdByUserId: currentDemoUserId,
+      members: [
+        GroupMember(
+          id: currentDemoUserId,
+          name: 'Организатор',
+          role: MemberRole.organizer,
+        ),
+      ],
+    );
+    GroupsStore.instance.addGroup(group);
 
-      await tester.pumpWidget(const MaterialApp(home: CreatedGroupsScreen()));
-      expect(find.text('Созданные группы'), findsOneWidget);
-      expect(find.text('Запланирована'), findsOneWidget);
-      expect(find.text('Активна'), findsNothing);
+    await tester.pumpWidget(const MaterialApp(home: CreatedGroupsScreen()));
+    expect(find.text('Созданные группы'), findsOneWidget);
+    expect(find.text('Запланирована'), findsOneWidget);
+    expect(find.text('Активна'), findsNothing);
 
-      await tester.runAsync(() async {
-        final wait =
-            startsAt.difference(DateTime.now()) +
-            const Duration(milliseconds: 50);
-        if (wait > Duration.zero) {
-          await Future<void>.delayed(wait);
-        }
-      });
-      await tester.pump(const Duration(minutes: 5));
+    await tester.runAsync(() async {
+      final wait =
+          startsAt.difference(DateTime.now()) +
+          const Duration(milliseconds: 50);
+      if (wait > Duration.zero) {
+        await Future<void>.delayed(wait);
+      }
+    });
+    await tester.pump(const Duration(minutes: 5));
 
-      expect(find.text('Созданные группы'), findsOneWidget);
-      expect(find.text('Запланирована'), findsNothing);
-      expect(find.text('Активна'), findsOneWidget);
-    },
-  );
+    expect(find.text('Созданные группы'), findsOneWidget);
+    expect(find.text('Запланирована'), findsNothing);
+    expect(find.text('Активна'), findsOneWidget);
+  });
 
   testWidgets('disposing the list cancels the status timer', (tester) async {
     currentDemoUserId = 'status-dispose-user';
