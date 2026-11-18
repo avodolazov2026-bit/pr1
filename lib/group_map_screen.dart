@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import 'package:geo_groups/geo_coordinate.dart';
 import 'package:geo_groups/geo_group.dart';
+import 'package:geo_groups/map_time_format.dart';
 
 class GroupMapScreen extends StatelessWidget {
   const GroupMapScreen({super.key, required this.group});
@@ -43,18 +45,48 @@ class GroupMapScreen extends StatelessWidget {
   }
 }
 
-class _MemberMap extends StatelessWidget {
+class _MemberMap extends StatefulWidget {
   const _MemberMap({required this.group});
 
   final GeoGroup group;
 
   @override
-  Widget build(BuildContext context) {
-    final points = <LatLng>[];
-    final markers = <Marker>[];
-    for (final location in group.memberLocations) {
+  State<_MemberMap> createState() => _MemberMapState();
+}
+
+class _VisibleMember {
+  const _VisibleMember({
+    required this.member,
+    required this.location,
+    required this.point,
+  });
+
+  final GroupMember member;
+  final GroupMemberLocation location;
+  final LatLng point;
+}
+
+class _MemberMapState extends State<_MemberMap> {
+  String? _selectedMemberId;
+
+  void _toggleMember(String memberId) {
+    setState(() {
+      _selectedMemberId = _selectedMemberId == memberId ? null : memberId;
+    });
+  }
+
+  void _clearSelection() {
+    if (_selectedMemberId == null) {
+      return;
+    }
+    setState(() => _selectedMemberId = null);
+  }
+
+  List<_VisibleMember> _visibleMembers() {
+    final visible = <_VisibleMember>[];
+    for (final location in widget.group.memberLocations) {
       GroupMember? member;
-      for (final candidate in group.members) {
+      for (final candidate in widget.group.members) {
         if (candidate.id == location.memberId) {
           member = candidate;
           break;
@@ -63,31 +95,76 @@ class _MemberMap extends StatelessWidget {
       if (member == null || member.status != MembershipStatus.active) {
         continue;
       }
-      final point = LatLng(
-        location.coordinate.latitude,
-        location.coordinate.longitude,
-      );
-      points.add(point);
-      markers.add(
-        Marker(
-          point: point,
-          width: 48,
-          height: 48,
-          alignment: Alignment.topCenter,
-          child: Tooltip(
-            message: member.name,
-            child: Semantics(
-              label: 'Позиция участника: ${member.name}',
-              child: const Icon(
-                Icons.location_on,
-                color: Colors.blue,
-                size: 48,
-              ),
-            ),
+      visible.add(
+        _VisibleMember(
+          member: member,
+          location: location,
+          point: LatLng(
+            location.coordinate.latitude,
+            location.coordinate.longitude,
           ),
         ),
       );
     }
+    return visible;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final visible = _visibleMembers();
+    final selectedId = _selectedMemberId;
+    final selectionVisible =
+        selectedId != null &&
+        visible.any((item) => item.member.id == selectedId);
+    if (selectedId != null && !selectionVisible) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _selectedMemberId == null) {
+          return;
+        }
+        final stillVisible = _visibleMembers().any(
+          (item) => item.member.id == _selectedMemberId,
+        );
+        if (stillVisible) {
+          return;
+        }
+        setState(() => _selectedMemberId = null);
+      });
+    }
+    _VisibleMember? selected;
+    for (final item in visible) {
+      if (item.member.id == _selectedMemberId) {
+        selected = item;
+        break;
+      }
+    }
+    final points = [for (final item in visible) item.point];
+    final markers = [
+      for (final item in visible)
+        Marker(
+          point: item.point,
+          width: 48,
+          height: 48,
+          alignment: Alignment.topCenter,
+          child: GestureDetector(
+            onTap: () => _toggleMember(item.member.id),
+            behavior: HitTestBehavior.opaque,
+            child: Tooltip(
+              message: item.member.name,
+              child: Semantics(
+                label: 'Позиция участника: ${item.member.name}',
+                child: Icon(
+                  Icons.location_on,
+                  color: item.member.id == selected?.member.id
+                      ? theme.colorScheme.primary
+                      : Colors.blue,
+                  size: 48,
+                ),
+              ),
+            ),
+          ),
+        ),
+    ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -97,6 +174,7 @@ class _MemberMap extends StatelessWidget {
             options: MapOptions(
               initialCenter: _cameraCenter(points),
               initialZoom: points.isEmpty ? 2 : 13,
+              onTap: (tapPosition, point) => _clearSelection(),
             ),
             children: [
               TileLayer(
@@ -114,11 +192,27 @@ class _MemberMap extends StatelessWidget {
           top: false,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
-            child: Text(
-              markers.isEmpty
-                  ? 'Нет актуальных позиций участников'
-                  : _mapParticipantsText(markers.length),
-            ),
+            child: selected == null
+                ? Text(
+                    markers.isEmpty
+                        ? 'Нет актуальных позиций участников'
+                        : _mapParticipantsText(markers.length),
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        selected.member.name,
+                        style: theme.textTheme.titleMedium,
+                      ),
+                      Text(
+                        'Обновлено: ${formatUpdatedAgo(selected.location.updatedAt)}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
           ),
         ),
       ],
