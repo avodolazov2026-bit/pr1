@@ -718,4 +718,90 @@ void main() {
 
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('created groups caption is hidden when the period is empty', (
+    tester,
+  ) async {
+    currentDemoUserId = 'caption-empty-creator';
+
+    await tester.pumpWidget(const MaterialApp(home: CreatedGroupsScreen()));
+
+    expect(find.text('Создать группу'), findsOneWidget);
+    expect(find.text('Созданные мной группы'), findsNothing);
+    expect(find.text('За выбранный период групп пока нет'), findsOneWidget);
+  });
+
+  testWidgets('created groups caption appears above a non-empty list', (
+    tester,
+  ) async {
+    currentDemoUserId = 'caption-creator';
+    final now = DateTime.now();
+    GroupsStore.instance.addGroup(
+      GeoGroup(
+        id: 'caption-created',
+        name: 'Моя созданная',
+        createdAt: now,
+        startsAt: now.subtract(const Duration(minutes: 5)),
+        endsAt: now.add(const Duration(hours: 2)),
+        createdByUserId: currentDemoUserId,
+        members: [
+          GroupMember(
+            id: currentDemoUserId,
+            name: 'Организатор',
+            role: MemberRole.organizer,
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(const MaterialApp(home: CreatedGroupsScreen()));
+
+    expect(find.text('Создать группу'), findsOneWidget);
+    expect(find.text('Созданные мной группы'), findsOneWidget);
+    expect(find.text('Моя созданная'), findsOneWidget);
+  });
+
+  testWidgets('active groups note is hidden without active groups', (
+    tester,
+  ) async {
+    currentDemoUserId = 'caption-finished-member';
+    final now = DateTime.now();
+    GroupsStore.instance.addGroup(
+      buildGroup(
+        id: 'caption-finished-only',
+        startsAt: now.subtract(const Duration(days: 2)),
+        endsAt: now.subtract(const Duration(hours: 2)),
+        memberId: currentDemoUserId,
+        role: MemberRole.participant,
+      ),
+    );
+
+    await tester.pumpWidget(const MaterialApp(home: MyGroupsScreen()));
+
+    expect(find.text('Завершённые'), findsOneWidget);
+    expect(find.text('Активные'), findsNothing);
+    expect(find.text('Группы, в которых я участвую.'), findsNothing);
+  });
+
+  testWidgets('active groups note appears under the active section', (
+    tester,
+  ) async {
+    currentDemoUserId = 'caption-active-member';
+    final now = DateTime.now();
+    final group = buildGroup(
+      id: 'caption-active',
+      startsAt: now.subtract(const Duration(minutes: 10)),
+      endsAt: now.add(const Duration(hours: 2)),
+      memberId: currentDemoUserId,
+      role: MemberRole.participant,
+    );
+    group.name = 'Моя активная';
+    GroupsStore.instance.addGroup(group);
+
+    await tester.pumpWidget(const MaterialApp(home: MyGroupsScreen()));
+
+    expect(find.text('Активные'), findsOneWidget);
+    expect(find.text('Группы, в которых я участвую.'), findsOneWidget);
+    expect(find.text('Моя активная'), findsOneWidget);
+  });
 }

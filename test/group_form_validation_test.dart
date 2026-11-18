@@ -30,7 +30,7 @@ void main() {
           home: const CreatedGroupsScreen(),
         ),
       );
-      await tester.tap(find.text('Добавить группу'));
+      await tester.tap(find.text('Создать группу'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'Поход');
       await tester.pump();

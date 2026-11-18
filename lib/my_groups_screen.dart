@@ -111,11 +111,27 @@ class _MyGroupsScreenState extends State<MyGroupsScreen>
       ..sort(compareUpcomingGroups);
     final finished = membership.where((group) => group.isFinished).toList()
       ..sort(compareFinishedGroups);
-    final sections = <({String title, List<GeoGroup> groups, Color color})>[
-      (title: 'Активные', groups: active, color: activeGroupAccent),
-      (title: 'Будущие', groups: upcoming, color: upcomingGroupAccent),
-      (title: 'Завершённые', groups: finished, color: finishedGroupAccent),
-    ].where((section) => section.groups.isNotEmpty).toList();
+    final sections =
+        <({String title, String? note, List<GeoGroup> groups, Color color})>[
+          (
+            title: 'Активные',
+            note: 'Группы, в которых я участвую.',
+            groups: active,
+            color: activeGroupAccent,
+          ),
+          (
+            title: 'Будущие',
+            note: null,
+            groups: upcoming,
+            color: upcomingGroupAccent,
+          ),
+          (
+            title: 'Завершённые',
+            note: null,
+            groups: finished,
+            color: finishedGroupAccent,
+          ),
+        ].where((section) => section.groups.isNotEmpty).toList();
 
     return Scaffold(
       appBar: AppBar(title: const Text('Мои группы')),
@@ -129,6 +145,15 @@ class _MyGroupsScreenState extends State<MyGroupsScreen>
                 count: section.groups.length,
                 color: section.color,
               ),
+              if (section.note != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  section.note!,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               for (final group in section.groups) ...[
                 GroupCard(group: group, onTap: () => _openGroup(group)),

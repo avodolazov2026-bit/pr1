@@ -157,7 +157,7 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen>
           children: [
             const SizedBox(height: 8),
             IconButton.filled(
-              tooltip: 'Добавить группу',
+              tooltip: 'Создать группу',
               onPressed: _addGroup,
               icon: const Icon(Icons.add),
               iconSize: 36,
@@ -165,7 +165,7 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen>
             ),
             TextButton(
               onPressed: _addGroup,
-              child: Text('Добавить группу', style: textTheme.titleMedium),
+              child: Text('Создать группу', style: textTheme.titleMedium),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
@@ -254,11 +254,19 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen>
                     )
                   : ListView.separated(
                       padding: const EdgeInsets.all(24),
-                      itemCount: groups.length,
+                      itemCount: groups.length + 1,
                       separatorBuilder: (context, index) =>
                           const SizedBox(height: 12),
                       itemBuilder: (context, index) {
-                        final group = groups[index];
+                        if (index == 0) {
+                          return Text(
+                            'Созданные мной группы',
+                            style: textTheme.titleMedium?.copyWith(
+                              color: colorScheme.onSurface,
+                            ),
+                          );
+                        }
+                        final group = groups[index - 1];
                         return GroupCard(
                           group: group,
                           onTap: () => _openGroup(group),
