@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'package:geo_groups/geo_group.dart';
@@ -13,8 +15,63 @@ class CreatedGroupsScreen extends StatefulWidget {
   State<CreatedGroupsScreen> createState() => _CreatedGroupsScreenState();
 }
 
-class _CreatedGroupsScreenState extends State<CreatedGroupsScreen> {
+class _CreatedGroupsScreenState extends State<CreatedGroupsScreen>
+    with WidgetsBindingObserver {
   GroupPeriod _period = GroupPeriod.week;
+  Timer? _statusRefreshTimer;
+
+  List<GeoGroup> _visibleGroups() =>
+      GroupsStore.instance.createdGroups(_period);
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _scheduleStatusRefresh();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      _scheduleStatusRefresh();
+    });
+  }
+
+  @override
+  void dispose() {
+    _statusRefreshTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || !mounted) {
+      return;
+    }
+    setState(() {});
+    _scheduleStatusRefresh();
+  }
+
+  void _scheduleStatusRefresh() {
+    _statusRefreshTimer?.cancel();
+    _statusRefreshTimer = null;
+    final now = DateTime.now();
+    final next = nextGroupStatusChange(_visibleGroups(), now);
+    if (next == null) {
+      return;
+    }
+    var delay = next.difference(now);
+    if (delay <= Duration.zero) {
+      delay = Duration.zero;
+    }
+    _statusRefreshTimer = Timer(delay, () {
+      if (!mounted) {
+        return;
+      }
+      setState(() {});
+      _scheduleStatusRefresh();
+    });
+  }
 
   Future<void> _openGroup(GeoGroup group) async {
     final leftGroupName = await Navigator.of(context).push<String>(
@@ -22,18 +79,23 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen> {
         builder: (context) => GroupScreen(
           group: group,
           onChanged: () {
-            if (mounted) {
-              setState(() {});
+            if (!mounted) {
+              return;
             }
+            setState(() {});
+            _scheduleStatusRefresh();
           },
         ),
       ),
     );
-    if (leftGroupName == null || !mounted) {
+    if (!mounted) {
       return;
     }
-
     setState(() {});
+    _scheduleStatusRefresh();
+    if (leftGroupName == null) {
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Вы покинули группу „$leftGroupName“')),
     );
@@ -77,6 +139,7 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen> {
     GroupsStore.instance.addGroup(group);
     GroupsStore.instance.syncInvitations(group);
     setState(() {});
+    _scheduleStatusRefresh();
     ScaffoldMessenger.of(context)
         .showSnackBar(const SnackBar(content: Text('Группа создана')));
   }
@@ -85,7 +148,7 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen> {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
-    final groups = GroupsStore.instance.createdGroups(_period);
+    final groups = _visibleGroups();
 
     return Scaffold(
       appBar: AppBar(title: const Text('Созданные группы')),
@@ -162,6 +225,7 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen> {
                   ),
                   onSelectionChanged: (selection) {
                     setState(() => _period = selection.first);
+                    _scheduleStatusRefresh();
                   },
                 ),
               ),

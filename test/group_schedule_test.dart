@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:geo_groups/created_groups_screen.dart';
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/group_invitation.dart';
 import 'package:geo_groups/group_map_screen.dart';
@@ -510,5 +511,211 @@ void main() {
     expect(find.text('Скопировать код приглашения'), findsOneWidget);
     expect(find.textContaining('Начнётся'), findsOneWidget);
     expect(find.text('Срок действия приглашения завершён'), findsNothing);
+  });
+
+  test('next status change is the nearest future start or end', () {
+    final now = DateTime.now();
+    final later = buildGroup(
+      id: 'next-later',
+      startsAt: now.add(const Duration(days: 2)),
+      endsAt: now.add(const Duration(days: 3)),
+    );
+    final sooner = buildGroup(
+      id: 'next-sooner',
+      startsAt: now.add(const Duration(hours: 3)),
+      endsAt: now.add(const Duration(days: 1)),
+    );
+    final finished = buildGroup(
+      id: 'next-finished',
+      startsAt: now.subtract(const Duration(days: 2)),
+      endsAt: now.subtract(const Duration(hours: 1)),
+    );
+
+    expect(
+      nextGroupStatusChange([later, sooner, finished], now),
+      sooner.startsAt,
+    );
+    expect(nextGroupStatusChange([finished], now), isNull);
+  });
+
+  testWidgets(
+    'a planned card shows the active status after the list refreshes',
+    (tester) async {
+      currentDemoUserId = 'status-refresh-user';
+      final now = DateTime.now();
+      final group = buildGroup(
+        id: 'status-refresh',
+        startsAt: now.add(const Duration(hours: 2)),
+        endsAt: now.add(const Duration(hours: 5)),
+        memberId: currentDemoUserId,
+        role: MemberRole.participant,
+      );
+      group.name = 'Скоро начнётся';
+      GroupsStore.instance.addGroup(group);
+
+      await tester.pumpWidget(const MaterialApp(home: MyGroupsScreen()));
+
+      expect(find.text('Запланирована'), findsOneWidget);
+      expect(find.text('Будущие'), findsOneWidget);
+      expect(find.text('Активна'), findsNothing);
+
+      group.startsAt = now.subtract(const Duration(minutes: 1));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+
+      expect(find.text('Запланирована'), findsNothing);
+      expect(find.text('Активна'), findsOneWidget);
+      expect(find.text('Активные'), findsOneWidget);
+      expect(find.text('Будущие'), findsNothing);
+    },
+  );
+
+  testWidgets('returning from a group refreshes a stale list status', (
+    tester,
+  ) async {
+    currentDemoUserId = 'status-return-user';
+    final now = DateTime.now();
+    final group = buildGroup(
+      id: 'status-return',
+      startsAt: now.add(const Duration(hours: 2)),
+      endsAt: now.add(const Duration(hours: 5)),
+      memberId: currentDemoUserId,
+      role: MemberRole.participant,
+    );
+    group.name = 'Вернуться к списку';
+    GroupsStore.instance.addGroup(group);
+
+    await tester.pumpWidget(const MaterialApp(home: MyGroupsScreen()));
+    expect(find.text('Запланирована'), findsOneWidget);
+
+    await tester.tap(find.text('Вернуться к списку'));
+    await tester.pumpAndSettle();
+    group.startsAt = now.subtract(const Duration(minutes: 1));
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Мои группы'), findsOneWidget);
+    expect(find.text('Запланирована'), findsNothing);
+    expect(find.text('Активна'), findsOneWidget);
+  });
+
+  testWidgets('a list without future transitions stays mounted', (
+    tester,
+  ) async {
+    currentDemoUserId = 'status-finished-user';
+    final now = DateTime.now();
+    final group = buildGroup(
+      id: 'status-no-timer',
+      startsAt: now.subtract(const Duration(days: 2)),
+      endsAt: now.subtract(const Duration(hours: 2)),
+      memberId: currentDemoUserId,
+      role: MemberRole.participant,
+    );
+    GroupsStore.instance.addGroup(group);
+
+    await tester.pumpWidget(const MaterialApp(home: MyGroupsScreen()));
+    expect(find.text('Истекла'), findsOneWidget);
+
+    await tester.pump(const Duration(days: 1));
+    expect(find.text('Истекла'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'the open list becomes active when the status timer fires',
+    (tester) async {
+      currentDemoUserId = 'status-timer-user';
+      final startsAt = DateTime.now().add(const Duration(seconds: 1));
+      final group = buildGroup(
+        id: 'status-timer',
+        startsAt: startsAt,
+        endsAt: startsAt.add(const Duration(hours: 2)),
+        memberId: currentDemoUserId,
+        role: MemberRole.participant,
+      );
+      group.name = 'Таймер статуса';
+      GroupsStore.instance.addGroup(group);
+
+      await tester.pumpWidget(const MaterialApp(home: MyGroupsScreen()));
+      expect(find.text('Запланирована'), findsOneWidget);
+      expect(find.text('Активна'), findsNothing);
+
+      await tester.runAsync(() async {
+        final wait =
+            startsAt.difference(DateTime.now()) +
+            const Duration(milliseconds: 50);
+        if (wait > Duration.zero) {
+          await Future<void>.delayed(wait);
+        }
+      });
+      await tester.pump(const Duration(minutes: 5));
+
+      expect(find.text('Мои группы'), findsOneWidget);
+      expect(find.text('Запланирована'), findsNothing);
+      expect(find.text('Активна'), findsOneWidget);
+      expect(find.text('Активные'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'created groups become active when the status timer fires',
+    (tester) async {
+      currentDemoUserId = 'created-timer-user';
+      final startsAt = DateTime.now().add(const Duration(seconds: 1));
+      final group = GeoGroup(
+        id: 'created-status-timer',
+        name: 'Созданная по таймеру',
+        createdAt: DateTime.now(),
+        startsAt: startsAt,
+        endsAt: startsAt.add(const Duration(hours: 2)),
+        createdByUserId: currentDemoUserId,
+        members: [
+          GroupMember(
+            id: currentDemoUserId,
+            name: 'Организатор',
+            role: MemberRole.organizer,
+          ),
+        ],
+      );
+      GroupsStore.instance.addGroup(group);
+
+      await tester.pumpWidget(const MaterialApp(home: CreatedGroupsScreen()));
+      expect(find.text('Созданные группы'), findsOneWidget);
+      expect(find.text('Запланирована'), findsOneWidget);
+      expect(find.text('Активна'), findsNothing);
+
+      await tester.runAsync(() async {
+        final wait =
+            startsAt.difference(DateTime.now()) +
+            const Duration(milliseconds: 50);
+        if (wait > Duration.zero) {
+          await Future<void>.delayed(wait);
+        }
+      });
+      await tester.pump(const Duration(minutes: 5));
+
+      expect(find.text('Созданные группы'), findsOneWidget);
+      expect(find.text('Запланирована'), findsNothing);
+      expect(find.text('Активна'), findsOneWidget);
+    },
+  );
+
+  testWidgets('disposing the list cancels the status timer', (tester) async {
+    currentDemoUserId = 'status-dispose-user';
+    final now = DateTime.now();
+    final group = buildGroup(
+      id: 'status-dispose',
+      startsAt: now.add(const Duration(minutes: 30)),
+      endsAt: now.add(const Duration(hours: 2)),
+      memberId: currentDemoUserId,
+      role: MemberRole.participant,
+    );
+    GroupsStore.instance.addGroup(group);
+
+    await tester.pumpWidget(const MaterialApp(home: MyGroupsScreen()));
+    await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
+    await tester.pump(const Duration(hours: 3));
+
+    expect(tester.takeException(), isNull);
   });
 }

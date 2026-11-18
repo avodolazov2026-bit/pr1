@@ -241,6 +241,26 @@ class GeoGroup {
   String get activeUntilLabel => scheduleSummary;
 }
 
+/// Ближайший будущий старт или конец среди [groups]. null, если переходов нет.
+DateTime? nextGroupStatusChange(Iterable<GeoGroup> groups, DateTime now) {
+  DateTime? nearest;
+  for (final group in groups) {
+    final moments = <DateTime>[
+      group.startsAt,
+      if (group.endsAt != null) group.endsAt!,
+    ];
+    for (final moment in moments) {
+      if (!moment.isAfter(now)) {
+        continue;
+      }
+      if (nearest == null || moment.isBefore(nearest)) {
+        nearest = moment;
+      }
+    }
+  }
+  return nearest;
+}
+
 enum GroupPeriod {
   week,
   month,

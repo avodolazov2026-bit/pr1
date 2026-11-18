@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'package:geo_groups/geo_group.dart';
@@ -5,31 +7,96 @@ import 'package:geo_groups/group_card.dart';
 import 'package:geo_groups/group_screen.dart';
 
 class MyGroupsScreen extends StatefulWidget {
-  const MyGroupsScreen({super.key});
+  const MyGroupsScreen({super.key, this.now});
+
+  /// Часы для выбора ближайшего перехода. В приложении это [DateTime.now].
+  final DateTime Function()? now;
 
   @override
   State<MyGroupsScreen> createState() => _MyGroupsScreenState();
 }
 
-class _MyGroupsScreenState extends State<MyGroupsScreen> {
+class _MyGroupsScreenState extends State<MyGroupsScreen>
+    with WidgetsBindingObserver {
+  Timer? _statusRefreshTimer;
+
+  DateTime _now() => widget.now?.call() ?? DateTime.now();
+
+  List<GeoGroup> _visibleGroups() => GroupsStore.instance.myGroups;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _scheduleStatusRefresh();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      _scheduleStatusRefresh();
+    });
+  }
+
+  @override
+  void dispose() {
+    _statusRefreshTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || !mounted) {
+      return;
+    }
+    setState(() {});
+    _scheduleStatusRefresh();
+  }
+
+  void _scheduleStatusRefresh() {
+    _statusRefreshTimer?.cancel();
+    _statusRefreshTimer = null;
+    final now = _now();
+    final next = nextGroupStatusChange(_visibleGroups(), now);
+    if (next == null) {
+      return;
+    }
+    var delay = next.difference(now);
+    if (delay <= Duration.zero) {
+      delay = Duration.zero;
+    }
+    _statusRefreshTimer = Timer(delay, () {
+      if (!mounted) {
+        return;
+      }
+      setState(() {});
+      _scheduleStatusRefresh();
+    });
+  }
+
   Future<void> _openGroup(GeoGroup group) async {
     final leftGroupName = await Navigator.of(context).push<String>(
       MaterialPageRoute<String>(
         builder: (context) => GroupScreen(
           group: group,
           onChanged: () {
-            if (mounted) {
-              setState(() {});
+            if (!mounted) {
+              return;
             }
+            setState(() {});
+            _scheduleStatusRefresh();
           },
         ),
       ),
     );
-    if (leftGroupName == null || !mounted) {
+    if (!mounted) {
       return;
     }
-
     setState(() {});
+    _scheduleStatusRefresh();
+    if (leftGroupName == null) {
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Вы покинули группу „$leftGroupName“')),
     );
@@ -37,7 +104,7 @@ class _MyGroupsScreenState extends State<MyGroupsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final membership = GroupsStore.instance.myGroups;
+    final membership = _visibleGroups();
     final active = membership.where((group) => group.isActive).toList()
       ..sort(compareActiveGroups);
     final upcoming = membership.where((group) => group.isUpcoming).toList()
