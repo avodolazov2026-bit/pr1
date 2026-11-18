@@ -4,6 +4,7 @@ import 'package:geo_groups/created_groups_screen.dart';
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/invitations_screen.dart';
 import 'package:geo_groups/my_groups_screen.dart';
+import 'package:geo_groups/profile_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -72,6 +73,16 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('Geo Groups'),
         leading: const Icon(Icons.groups),
         actions: [
+          IconButton(
+            tooltip: 'Мой профиль',
+            onPressed: () {
+              final user = currentDemoUser;
+              _openScreen(
+                ProfileScreen(userId: user.id, fallbackName: user.name),
+              );
+            },
+            icon: const Icon(Icons.account_circle_outlined),
+          ),
           IconButton(
             tooltip: 'Демонстрационный пользователь',
             onPressed: _switchDemoUser,
