@@ -472,7 +472,8 @@ void main() {
     await tester.tap(find.text('Открыть карту'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
-    expect(find.text('Тестовая точка на карте'), findsOneWidget);
+    expect(find.text('Группа: «Группа screen-active»'), findsOneWidget);
+    expect(find.text('Тестовая точка на карте'), findsNothing);
     Navigator.of(tester.element(find.text('Карта группы'))).pop();
     await tester.pumpAndSettle();
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:geo_groups/geo_coordinate.dart';
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/group_map_screen.dart';
 
@@ -22,15 +23,42 @@ void main() {
     );
   }
 
-  testWidgets('an active group shows the map and the test point', (
+  testWidgets('an active group shows a marker for each active member', (
     tester,
   ) async {
     final now = DateTime.now();
-    final active = group(
+    final active = GeoGroup(
       id: 'map-active',
       name: 'Прогулка',
+      createdAt: now.subtract(const Duration(days: 1)),
       startsAt: now.subtract(const Duration(hours: 1)),
       endsAt: now.add(const Duration(hours: 2)),
+      members: [
+        GroupMember(id: 'maria', name: 'Мария'),
+        GroupMember(
+          id: 'olga',
+          name: 'Ольга',
+          status: MembershipStatus.invited,
+        ),
+        GroupMember(id: 'alexey', name: 'Алексей'),
+      ],
+      memberLocations: [
+        GroupMemberLocation(
+          memberId: 'maria',
+          coordinate: GeoCoordinate(latitude: 55.7558, longitude: 37.6173),
+          updatedAt: now,
+        ),
+        GroupMemberLocation(
+          memberId: 'olga',
+          coordinate: GeoCoordinate(latitude: 55.7601, longitude: 37.6186),
+          updatedAt: now,
+        ),
+        GroupMemberLocation(
+          memberId: 'alexey',
+          coordinate: GeoCoordinate(latitude: 55.749, longitude: 37.605),
+          updatedAt: now,
+        ),
+      ],
     );
 
     await tester.pumpWidget(MaterialApp(home: GroupMapScreen(group: active)));
@@ -38,10 +66,38 @@ void main() {
 
     expect(find.text('Карта группы'), findsOneWidget);
     expect(find.text('Группа: «Прогулка»'), findsOneWidget);
-    expect(find.text('Тестовая точка на карте'), findsOneWidget);
+    expect(find.text('Тестовая точка на карте'), findsNothing);
     expect(find.text('OpenStreetMap contributors'), findsOneWidget);
     expect(find.byType(FlutterMap), findsOneWidget);
-    expect(find.byIcon(Icons.location_on), findsOneWidget);
+    expect(find.byIcon(Icons.location_on), findsNWidgets(2));
+    expect(_positionLabel('Мария'), findsOneWidget);
+    expect(_positionLabel('Алексей'), findsOneWidget);
+    expect(_positionLabel('Ольга'), findsNothing);
+    expect(find.byTooltip('Мария'), findsOneWidget);
+    expect(find.byTooltip('Ольга'), findsNothing);
+    expect(find.text('На карте: 2 участника'), findsOneWidget);
+  });
+
+  testWidgets('an active group without locations shows an empty map', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    final active = GeoGroup(
+      id: 'map-empty',
+      name: 'Без позиций',
+      createdAt: now.subtract(const Duration(days: 1)),
+      startsAt: now.subtract(const Duration(hours: 1)),
+      endsAt: now.add(const Duration(hours: 2)),
+      members: [GroupMember(id: 'maria', name: 'Мария')],
+    );
+
+    await tester.pumpWidget(MaterialApp(home: GroupMapScreen(group: active)));
+    await tester.pump();
+
+    expect(find.byType(FlutterMap), findsOneWidget);
+    expect(find.byIcon(Icons.location_on), findsNothing);
+    expect(find.text('Нет актуальных позиций участников'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('a planned group does not build the map', (tester) async {
@@ -63,4 +119,12 @@ void main() {
     expect(find.byType(FlutterMap), findsNothing);
     expect(find.text('Тестовая точка на карте'), findsNothing);
   });
+}
+
+Finder _positionLabel(String name) {
+  return find.byWidgetPredicate(
+    (widget) =>
+        widget is Semantics &&
+        widget.properties.label == 'Позиция участника: $name',
+  );
 }
