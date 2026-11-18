@@ -367,7 +367,7 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: MyGroupsScreen()));
 
     expect(find.text('Активные'), findsOneWidget);
-    expect(find.text('Запланированные'), findsOneWidget);
+    expect(find.text('Будущие'), findsOneWidget);
     expect(find.text('Завершённые'), findsOneWidget);
     expect(find.text('Запланирована'), findsOneWidget);
     expect(find.textContaining('Начнётся'), findsOneWidget);
@@ -383,14 +383,8 @@ void main() {
         .map((text) => text.data)
         .whereType<String>()
         .toList();
-    expect(
-      labels.indexOf('Активные'),
-      lessThan(labels.indexOf('Запланированные')),
-    );
-    expect(
-      labels.indexOf('Запланированные'),
-      lessThan(labels.indexOf('Завершённые')),
-    );
+    expect(labels.indexOf('Активные'), lessThan(labels.indexOf('Будущие')));
+    expect(labels.indexOf('Будущие'), lessThan(labels.indexOf('Завершённые')));
     expect(
       labels.indexOf('Секция активная'),
       lessThan(labels.indexOf('Секция активная позже')),
@@ -401,7 +395,7 @@ void main() {
     );
     expect(
       labels.indexOf('Секция запланированная'),
-      greaterThan(labels.indexOf('Запланированные')),
+      greaterThan(labels.indexOf('Будущие')),
     );
     expect(
       labels.indexOf('Секция запланированная'),
@@ -432,7 +426,7 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: MyGroupsScreen()));
 
     expect(find.text('Активные'), findsOneWidget);
-    expect(find.text('Запланированные'), findsNothing);
+    expect(find.text('Будущие'), findsNothing);
     expect(find.text('Завершённые'), findsNothing);
   });
 

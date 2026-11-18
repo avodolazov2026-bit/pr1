@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/group_card.dart';
+import 'package:geo_groups/group_schedule_form.dart';
 import 'package:geo_groups/group_screen.dart';
 import 'package:geo_groups/invite_source_sheet.dart';
 
@@ -237,8 +238,6 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
   TimeOfDay? _endTime;
   bool _indefinite = false;
   final List<DirectoryPerson> _invited = <DirectoryPerson>[];
-  String? _nameError;
-  String? _scheduleError;
 
   @override
   void initState() {
@@ -278,10 +277,7 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
     if (picked == null) {
       return;
     }
-    setState(() {
-      _startDate = picked;
-      _scheduleError = null;
-    });
+    setState(() => _startDate = picked);
   }
 
   Future<void> _pickStartTime() async {
@@ -292,10 +288,7 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
     if (picked == null) {
       return;
     }
-    setState(() {
-      _startTime = picked;
-      _scheduleError = null;
-    });
+    setState(() => _startTime = picked);
   }
 
   Future<void> _pickEndDate() async {
@@ -310,10 +303,7 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
     if (picked == null) {
       return;
     }
-    setState(() {
-      _endDate = picked;
-      _scheduleError = null;
-    });
+    setState(() => _endDate = picked);
   }
 
   Future<void> _pickEndTime() async {
@@ -324,10 +314,7 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
     if (picked == null) {
       return;
     }
-    setState(() {
-      _endTime = picked;
-      _scheduleError = null;
-    });
+    setState(() => _endTime = picked);
   }
 
   DateTime get _startsAt => DateTime(
@@ -367,38 +354,28 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
     setState(() => _invited.remove(person));
   }
 
+  GroupFormIssue? _formIssue() {
+    final endsAt = _indefinite ? null : _endsAt;
+    return groupFormIssue(
+      name: _nameController.text,
+      originalStartsAt: _startsAt,
+      nextStartsAt: _startsAt,
+      originalEndsAt: endsAt,
+      nextEndsAt: endsAt,
+      upcoming: true,
+      endOmitted: !_indefinite && endsAt == null,
+    );
+  }
+
   void _submit() {
-    final name = _nameController.text.trim();
-    if (name.isEmpty) {
-      setState(() => _nameError = 'Введите название группы');
+    if (_formIssue() != null) {
       return;
     }
-
-    final startsAt = _startsAt;
-    final now = DateTime.now();
-    if (!startsAt.isAfter(now)) {
-      setState(() => _scheduleError = 'Начало группы должно быть в будущем');
-      return;
-    }
-
-    DateTime? endsAt;
-    if (!_indefinite) {
-      endsAt = _endsAt;
-      if (endsAt == null) {
-        setState(() => _scheduleError = 'Выберите дату и время завершения');
-        return;
-      }
-      if (!endsAt.isAfter(startsAt)) {
-        setState(() => _scheduleError = 'Окончание должно быть позже начала');
-        return;
-      }
-    }
-
     Navigator.of(context).pop(
       _GroupDraft(
-        name: name,
-        startsAt: startsAt,
-        endsAt: endsAt,
+        name: _nameController.text.trim(),
+        startsAt: _startsAt,
+        endsAt: _indefinite ? null : _endsAt,
         invited: List<DirectoryPerson>.of(_invited),
       ),
     );
@@ -409,6 +386,11 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
     final endsAt = _endsAt;
+    final issue = _formIssue();
+    final startInvalid =
+        issue?.field == GroupScheduleField.start && issue!.highlightFields;
+    final endInvalid =
+        issue?.field == GroupScheduleField.end && issue!.highlightFields;
 
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
@@ -425,27 +407,31 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
               textCapitalization: TextCapitalization.sentences,
               decoration: InputDecoration(
                 labelText: 'Название группы',
-                errorText: _nameError,
+                errorText: issue?.field == GroupScheduleField.name
+                    ? issue!.message
+                    : null,
                 border: const OutlineInputBorder(),
               ),
-              onChanged: (_) {
-                if (_nameError != null) {
-                  setState(() => _nameError = null);
-                }
-              },
+              onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 16),
-            OutlinedButton.icon(
+            ScheduleOutlinedButton(
               onPressed: _pickStartDate,
-              icon: const Icon(Icons.event_outlined),
-              label: Text('Дата начала: ${formatGroupDate(_startDate)}'),
+              icon: Icons.event_outlined,
+              label: 'Дата начала: ${formatGroupDate(_startDate)}',
+              invalid: startInvalid,
             ),
             const SizedBox(height: 12),
-            OutlinedButton.icon(
+            ScheduleOutlinedButton(
               onPressed: _pickStartTime,
-              icon: const Icon(Icons.schedule),
-              label: Text('Время начала: ${formatGroupTime(_startTime)}'),
+              icon: Icons.schedule,
+              label: 'Время начала: ${formatGroupTime(_startTime)}',
+              invalid: startInvalid,
             ),
+            if (issue?.field == GroupScheduleField.start) ...[
+              const SizedBox(height: 8),
+              ScheduleIssueText(issue!.message),
+            ],
             const SizedBox(height: 8),
             Text(
               'Начнётся ${formatGroupDateTime(_startsAt)}',
@@ -466,38 +452,30 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
                 ),
               ),
               onChanged: (value) {
-                setState(() {
-                  _indefinite = value ?? false;
-                  _scheduleError = null;
-                });
+                setState(() => _indefinite = value ?? false);
               },
             ),
             const SizedBox(height: 4),
-            OutlinedButton.icon(
+            ScheduleOutlinedButton(
               onPressed: _indefinite ? null : _pickEndDate,
-              icon: const Icon(Icons.calendar_today),
-              label: Text(
-                _endDate == null
-                    ? 'Дата завершения'
-                    : 'Дата завершения: ${formatGroupDate(_endDate!)}',
-              ),
+              icon: Icons.calendar_today,
+              label: _endDate == null
+                  ? 'Дата завершения'
+                  : 'Дата завершения: ${formatGroupDate(_endDate!)}',
+              invalid: endInvalid,
             ),
             const SizedBox(height: 12),
-            OutlinedButton.icon(
+            ScheduleOutlinedButton(
               onPressed: _indefinite ? null : _pickEndTime,
-              icon: const Icon(Icons.schedule),
-              label: Text(
-                _endTime == null
-                    ? 'Время завершения'
-                    : 'Время завершения: ${formatGroupTime(_endTime!)}',
-              ),
+              icon: Icons.schedule,
+              label: _endTime == null
+                  ? 'Время завершения'
+                  : 'Время завершения: ${formatGroupTime(_endTime!)}',
+              invalid: endInvalid,
             ),
-            if (!_indefinite && _scheduleError != null) ...[
+            if (issue?.field == GroupScheduleField.end) ...[
               const SizedBox(height: 8),
-              Text(
-                _scheduleError!,
-                style: textTheme.bodyMedium?.copyWith(color: colorScheme.error),
-              ),
+              ScheduleIssueText(issue!.message),
             ] else if (!_indefinite && endsAt != null) ...[
               const SizedBox(height: 8),
               Text(
@@ -561,12 +539,16 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: FilledButton(
-                    onPressed: _submit,
+                    onPressed: issue == null ? _submit : null,
                     child: const Text('Создать'),
                   ),
                 ),
               ],
             ),
+            if (issue != null) ...[
+              const SizedBox(height: 8),
+              ScheduleIssueText(issue.message, small: true),
+            ],
           ],
         ),
       ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:geo_groups/geo_group.dart';
+import 'package:geo_groups/group_schedule_form.dart';
 import 'package:geo_groups/invite_source_sheet.dart';
 
 class EditGroupScreen extends StatefulWidget {
@@ -45,8 +46,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
   DateTime? _date;
   TimeOfDay? _time;
   late bool _indefinite;
-  String? _nameError;
-  String? _scheduleError;
+  String? _extraError;
 
   @override
   void initState() {
@@ -106,31 +106,18 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
 
   DateTime get _nextStartsAt => _startsAt ?? widget.group.startsAt;
 
-  void _rejectSchedule(String message) {
-    setState(() => _scheduleError = message);
-  }
-
-  void _acceptSchedule(DateTime? nextEnd) {
-    final issue = validateGroupSchedule(
+  GroupFormIssue? _formIssue() {
+    final endsAt = _hidesEnd ? null : _endsAt;
+    return groupFormIssue(
+      name: _nameController.text,
       originalStartsAt: widget.group.startsAt,
       nextStartsAt: _nextStartsAt,
       originalEndsAt: widget.group.endsAt,
-      nextEndsAt: nextEnd,
+      nextEndsAt: endsAt,
       upcoming: _canChangeStart,
+      endOmitted: !_hidesEnd && endsAt == null,
+      extraError: _extraError,
     );
-    if (issue != null) {
-      _rejectSchedule(issue);
-      return;
-    }
-    setState(() => _scheduleError = null);
-  }
-
-  void _previewSchedule() {
-    if (!_hidesEnd && _endsAt == null) {
-      setState(() => _scheduleError = null);
-      return;
-    }
-    _acceptSchedule(_hidesEnd ? null : _endsAt);
   }
 
   Future<void> _pickStartDate() async {
@@ -155,9 +142,8 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
     }
     setState(() {
       _startDate = picked;
-      _scheduleError = null;
+      _extraError = null;
     });
-    _previewSchedule();
   }
 
   Future<void> _pickStartTime() async {
@@ -170,9 +156,8 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
     }
     setState(() {
       _startTime = picked;
-      _scheduleError = null;
+      _extraError = null;
     });
-    _previewSchedule();
   }
 
   Future<void> _pickDate() async {
@@ -184,7 +169,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
       lastDate = DateTime(original.year, original.month, original.day);
     }
     if (lastDate.isBefore(today)) {
-      _rejectSchedule('Нельзя выбрать дату и время в прошлом');
+      setState(() => _extraError = 'Нельзя выбрать дату и время в прошлом');
       return;
     }
 
@@ -207,9 +192,8 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
     }
     setState(() {
       _date = picked;
-      _scheduleError = null;
+      _extraError = null;
     });
-    _previewSchedule();
   }
 
   Future<void> _pickTime() async {
@@ -222,9 +206,8 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
     }
     setState(() {
       _time = picked;
-      _scheduleError = null;
+      _extraError = null;
     });
-    _previewSchedule();
   }
 
   Future<void> _confirmExclude(_MemberDraft member) async {
@@ -328,44 +311,17 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
   }
 
   void _save() {
-    final name = _nameController.text.trim();
-    if (name.isEmpty) {
-      setState(() => _nameError = 'Введите название группы');
+    if (_formIssue() != null) {
       return;
     }
 
     final startsAt = _nextStartsAt;
-    if (_canChangeStart && _startsAt == null) {
-      _rejectSchedule('Выберите дату и время начала');
-      return;
-    }
-
-    DateTime? endsAt;
-    if (!_hidesEnd) {
-      endsAt = _endsAt;
-      if (endsAt == null) {
-        _rejectSchedule('Выберите дату и время завершения');
-        return;
-      }
-    }
-
-    final issue = validateGroupSchedule(
-      originalStartsAt: widget.group.startsAt,
-      nextStartsAt: startsAt,
-      originalEndsAt: widget.group.endsAt,
-      nextEndsAt: endsAt,
-      upcoming: _canChangeStart,
-    );
-    if (issue != null) {
-      _rejectSchedule(issue);
-      return;
-    }
-
+    final endsAt = _hidesEnd ? null : _endsAt;
     for (final member in _members) {
       member.persisted?.status = member.status;
     }
     final error = widget.group.updateDetails(
-      name: name,
+      name: _nameController.text.trim(),
       startsAt: startsAt,
       endsAt: endsAt,
       members: _membersToSave(),
@@ -374,7 +330,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
       for (final member in _members) {
         member.persisted?.status = member.originalStatus;
       }
-      setState(() => _scheduleError = error);
+      setState(() => _extraError = error);
       return;
     }
 
@@ -387,6 +343,11 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
     final endsAt = _endsAt;
+    final issue = _formIssue();
+    final startInvalid =
+        issue?.field == GroupScheduleField.start && issue!.highlightFields;
+    final endInvalid =
+        issue?.field == GroupScheduleField.end && issue!.highlightFields;
     _MemberDraft? organizer;
     for (final member in _members) {
       if (member.role == MemberRole.organizer) {
@@ -414,36 +375,36 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
               textCapitalization: TextCapitalization.sentences,
               decoration: InputDecoration(
                 labelText: 'Название группы',
-                errorText: _nameError,
+                errorText: issue?.field == GroupScheduleField.name
+                    ? issue!.message
+                    : null,
                 border: const OutlineInputBorder(),
               ),
-              onChanged: (_) {
-                if (_nameError != null) {
-                  setState(() => _nameError = null);
-                }
-              },
+              onChanged: (_) => setState(() => _extraError = null),
             ),
             const SizedBox(height: 16),
             if (_canChangeStart) ...[
-              OutlinedButton.icon(
+              ScheduleOutlinedButton(
                 onPressed: _pickStartDate,
-                icon: const Icon(Icons.event_outlined),
-                label: Text(
-                  _startDate == null
-                      ? 'Дата начала'
-                      : 'Дата начала: ${formatGroupDate(_startDate!)}',
-                ),
+                icon: Icons.event_outlined,
+                label: _startDate == null
+                    ? 'Дата начала'
+                    : 'Дата начала: ${formatGroupDate(_startDate!)}',
+                invalid: startInvalid,
               ),
               const SizedBox(height: 12),
-              OutlinedButton.icon(
+              ScheduleOutlinedButton(
                 onPressed: _pickStartTime,
-                icon: const Icon(Icons.schedule),
-                label: Text(
-                  _startTime == null
-                      ? 'Время начала'
-                      : 'Время начала: ${formatGroupTime(_startTime!)}',
-                ),
+                icon: Icons.schedule,
+                label: _startTime == null
+                    ? 'Время начала'
+                    : 'Время начала: ${formatGroupTime(_startTime!)}',
+                invalid: startInvalid,
               ),
+              if (issue?.field == GroupScheduleField.start) ...[
+                const SizedBox(height: 8),
+                ScheduleIssueText(issue!.message),
+              ],
             ] else
               InputDecorator(
                 decoration: const InputDecoration(
@@ -469,38 +430,32 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
                   ? (value) {
                       setState(() {
                         _indefinite = value ?? false;
-                        _scheduleError = null;
+                        _extraError = null;
                       });
-                      _previewSchedule();
                     }
                   : null,
             ),
             const SizedBox(height: 4),
-            OutlinedButton.icon(
+            ScheduleOutlinedButton(
               onPressed: _hidesEnd ? null : _pickDate,
-              icon: const Icon(Icons.calendar_today),
-              label: Text(
-                _date == null
-                    ? 'Дата завершения'
-                    : 'Дата завершения: ${formatGroupDate(_date!)}',
-              ),
+              icon: Icons.calendar_today,
+              label: _date == null
+                  ? 'Дата завершения'
+                  : 'Дата завершения: ${formatGroupDate(_date!)}',
+              invalid: endInvalid,
             ),
             const SizedBox(height: 12),
-            OutlinedButton.icon(
+            ScheduleOutlinedButton(
               onPressed: _hidesEnd ? null : _pickTime,
-              icon: const Icon(Icons.schedule),
-              label: Text(
-                _time == null
-                    ? 'Время завершения'
-                    : 'Время завершения: ${formatGroupTime(_time!)}',
-              ),
+              icon: Icons.schedule,
+              label: _time == null
+                  ? 'Время завершения'
+                  : 'Время завершения: ${formatGroupTime(_time!)}',
+              invalid: endInvalid,
             ),
-            if (_scheduleError != null) ...[
+            if (issue?.field == GroupScheduleField.end) ...[
               const SizedBox(height: 8),
-              Text(
-                _scheduleError!,
-                style: textTheme.bodyMedium?.copyWith(color: colorScheme.error),
-              ),
+              ScheduleIssueText(issue!.message),
             ] else if (!_hidesEnd && endsAt != null) ...[
               const SizedBox(height: 8),
               Text(
@@ -580,9 +535,19 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-          child: FilledButton(
-            onPressed: _save,
-            child: const Text('Сохранить изменения'),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              FilledButton(
+                onPressed: issue == null ? _save : null,
+                child: const Text('Сохранить изменения'),
+              ),
+              if (issue != null) ...[
+                const SizedBox(height: 8),
+                ScheduleIssueText(issue.message, small: true),
+              ],
+            ],
           ),
         ),
       ),

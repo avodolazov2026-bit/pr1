@@ -44,11 +44,11 @@ class _MyGroupsScreenState extends State<MyGroupsScreen> {
       ..sort(compareUpcomingGroups);
     final finished = membership.where((group) => group.isFinished).toList()
       ..sort(compareFinishedGroups);
-    final sections = <(String, List<GeoGroup>)>[
-      ('Активные', active),
-      ('Запланированные', upcoming),
-      ('Завершённые', finished),
-    ].where((section) => section.$2.isNotEmpty).toList();
+    final sections = <({String title, List<GeoGroup> groups, Color color})>[
+      (title: 'Активные', groups: active, color: activeGroupAccent),
+      (title: 'Будущие', groups: upcoming, color: upcomingGroupAccent),
+      (title: 'Завершённые', groups: finished, color: finishedGroupAccent),
+    ].where((section) => section.groups.isNotEmpty).toList();
 
     return Scaffold(
       appBar: AppBar(title: const Text('Мои группы')),
@@ -57,9 +57,13 @@ class _MyGroupsScreenState extends State<MyGroupsScreen> {
           padding: const EdgeInsets.all(24),
           children: [
             for (final section in sections) ...[
-              Text(section.$1, style: Theme.of(context).textTheme.titleMedium),
+              _SectionHeader(
+                title: section.title,
+                count: section.groups.length,
+                color: section.color,
+              ),
               const SizedBox(height: 12),
-              for (final group in section.$2) ...[
+              for (final group in section.groups) ...[
                 GroupCard(group: group, onTap: () => _openGroup(group)),
                 const SizedBox(height: 12),
               ],
@@ -68,6 +72,36 @@ class _MyGroupsScreenState extends State<MyGroupsScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({
+    required this.title,
+    required this.count,
+    required this.color,
+  });
+
+  final String title;
+  final int count;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.titleMedium;
+    return Row(
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 8),
+        Text(title, style: style),
+        const SizedBox(width: 8),
+        Text('$count', style: style),
+      ],
     );
   }
 }
