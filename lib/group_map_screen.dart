@@ -67,7 +67,14 @@ class _VisibleMember {
 }
 
 class _MemberMapState extends State<_MemberMap> {
+  final MapController _mapController = MapController();
   String? _selectedMemberId;
+
+  @override
+  void dispose() {
+    _mapController.dispose();
+    super.dispose();
+  }
 
   void _toggleMember(String memberId) {
     setState(() {
@@ -170,17 +177,46 @@ class _MemberMapState extends State<_MemberMap> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(
-          child: FlutterMap(
-            options: _optionsFor(points),
+          child: Stack(
             children: [
-              TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.example.geo_groups',
+              FlutterMap(
+                mapController: _mapController,
+                options: _optionsFor(points),
+                children: [
+                  TileLayer(
+                    urlTemplate:
+                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName: 'com.example.geo_groups',
+                  ),
+                  MarkerLayer(markers: markers),
+                  const SimpleAttributionWidget(
+                    source: Text('OpenStreetMap contributors'),
+                  ),
+                ],
               ),
-              MarkerLayer(markers: markers),
-              const SimpleAttributionWidget(
-                source: Text('OpenStreetMap contributors'),
-              ),
+              if (visible.isNotEmpty)
+                SafeArea(
+                  child: Align(
+                    alignment: Alignment.topRight,
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Material(
+                        elevation: 2,
+                        shape: const CircleBorder(),
+                        clipBehavior: Clip.antiAlias,
+                        color: theme.colorScheme.surface,
+                        child: IconButton(
+                          tooltip: 'Показать всех участников',
+                          onPressed: _showAllVisibleMembers,
+                          icon: const Icon(
+                            Icons.fit_screen,
+                            semanticLabel: 'Показать всех участников',
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
@@ -236,6 +272,23 @@ class _MemberMapState extends State<_MemberMap> {
         padding: const EdgeInsets.all(48),
       ),
       onTap: (_, _) => _clearSelection(),
+    );
+  }
+
+  void _showAllVisibleMembers() {
+    final points = [for (final item in _visibleMembers()) item.point];
+    if (points.isEmpty) {
+      return;
+    }
+    if (points.length == 1) {
+      _mapController.move(points.single, 13);
+      return;
+    }
+    _mapController.fitCamera(
+      CameraFit.bounds(
+        bounds: LatLngBounds.fromPoints(points),
+        padding: const EdgeInsets.all(48),
+      ),
     );
   }
 }

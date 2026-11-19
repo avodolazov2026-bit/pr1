@@ -306,6 +306,71 @@ void main() {
     expect(boundsFit.bounds.contains(vladivostok), isTrue);
   });
 
+  testWidgets('two active members show the fit-all button', (tester) async {
+    final now = DateTime.now();
+    await tester.pumpWidget(
+      MaterialApp(home: GroupMapScreen(group: _twoActiveMembers(now))),
+    );
+    await tester.pump();
+
+    expect(find.byTooltip('Показать всех участников'), findsOneWidget);
+    expect(find.byIcon(Icons.fit_screen), findsOneWidget);
+  });
+
+  testWidgets('an empty map hides the fit-all button', (tester) async {
+    final now = DateTime.now();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GroupMapScreen(
+          group: GeoGroup(
+            id: 'map-empty-button',
+            name: 'Без позиций',
+            createdAt: now.subtract(const Duration(days: 1)),
+            startsAt: now.subtract(const Duration(hours: 1)),
+            endsAt: now.add(const Duration(hours: 2)),
+            members: [GroupMember(id: 'maria', name: 'Мария')],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byTooltip('Показать всех участников'), findsNothing);
+    expect(find.byIcon(Icons.fit_screen), findsNothing);
+  });
+
+  testWidgets('fitting all members keeps the selected member card', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    await tester.pumpWidget(
+      MaterialApp(home: GroupMapScreen(group: _twoActiveMembers(now))),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Мария'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Показать всех участников'));
+    await tester.pump();
+
+    expect(find.text('Мария'), findsOneWidget);
+    expect(find.textContaining('Обновлено:'), findsOneWidget);
+    expect(find.text('На карте: 2 участника'), findsNothing);
+  });
+
+  testWidgets('fitting all members does not throw', (tester) async {
+    final now = DateTime.now();
+    await tester.pumpWidget(
+      MaterialApp(home: GroupMapScreen(group: _twoActiveMembers(now))),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Показать всех участников'));
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('a planned group does not build the map', (tester) async {
     final now = DateTime.now();
     final planned = group(
