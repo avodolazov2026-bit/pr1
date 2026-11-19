@@ -171,11 +171,7 @@ class _MemberMapState extends State<_MemberMap> {
       children: [
         Expanded(
           child: FlutterMap(
-            options: MapOptions(
-              initialCenter: _cameraCenter(points),
-              initialZoom: points.isEmpty ? 2 : 13,
-              onTap: (tapPosition, point) => _clearSelection(),
-            ),
+            options: _optionsFor(points),
             children: [
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -218,6 +214,30 @@ class _MemberMapState extends State<_MemberMap> {
       ],
     );
   }
+
+  MapOptions _optionsFor(List<LatLng> points) {
+    if (points.isEmpty) {
+      return MapOptions(
+        initialCenter: const LatLng(0, 0),
+        initialZoom: 2,
+        onTap: (_, _) => _clearSelection(),
+      );
+    }
+    if (points.length == 1) {
+      return MapOptions(
+        initialCenter: points.single,
+        initialZoom: 13,
+        onTap: (_, _) => _clearSelection(),
+      );
+    }
+    return MapOptions(
+      initialCameraFit: CameraFit.bounds(
+        bounds: LatLngBounds.fromPoints(points),
+        padding: const EdgeInsets.all(48),
+      ),
+      onTap: (_, _) => _clearSelection(),
+    );
+  }
 }
 
 String _mapParticipantsText(int count) {
@@ -231,17 +251,4 @@ String _mapParticipantsText(int count) {
           _ => 'участников',
         };
   return 'На карте: $count $word';
-}
-
-LatLng _cameraCenter(List<LatLng> points) {
-  if (points.isEmpty) {
-    return const LatLng(0, 0);
-  }
-  var latitude = 0.0;
-  var longitude = 0.0;
-  for (final point in points) {
-    latitude += point.latitude;
-    longitude += point.longitude;
-  }
-  return LatLng(latitude / points.length, longitude / points.length);
 }

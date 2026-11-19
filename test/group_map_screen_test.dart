@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:latlong2/latlong.dart';
 
 import 'package:geo_groups/geo_coordinate.dart';
 import 'package:geo_groups/geo_group.dart';
@@ -203,10 +204,106 @@ void main() {
     await tester.pump();
 
     expect(find.byType(FlutterMap), findsOneWidget);
+    final emptyOptions = tester
+        .widget<FlutterMap>(find.byType(FlutterMap))
+        .options;
+    expect(emptyOptions.initialCenter, const LatLng(0, 0));
+    expect(emptyOptions.initialZoom, 2);
+    expect(emptyOptions.initialCameraFit, isNull);
     expect(find.byIcon(Icons.location_on), findsNothing);
     expect(find.text('Нет актуальных позиций участников'), findsOneWidget);
     expect(find.textContaining('Обновлено:'), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('one visible position centers the map on that member', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GroupMapScreen(
+          group: GeoGroup(
+            id: 'map-one',
+            name: 'Одна точка',
+            createdAt: now.subtract(const Duration(days: 1)),
+            startsAt: now.subtract(const Duration(hours: 1)),
+            endsAt: now.add(const Duration(hours: 2)),
+            members: [GroupMember(id: 'maria', name: 'Мария')],
+            memberLocations: [
+              GroupMemberLocation(
+                memberId: 'maria',
+                coordinate: GeoCoordinate(
+                  latitude: 55.7558,
+                  longitude: 37.6173,
+                ),
+                updatedAt: now,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final options = tester.widget<FlutterMap>(find.byType(FlutterMap)).options;
+    expect(options.initialCenter, const LatLng(55.7558, 37.6173));
+    expect(options.initialZoom, 13);
+    expect(options.initialCameraFit, isNull);
+  });
+
+  testWidgets('two distant positions fit inside the initial camera bounds', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    const moscow = LatLng(55.7558, 37.6173);
+    const vladivostok = LatLng(43.1155, 131.8855);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GroupMapScreen(
+          group: GeoGroup(
+            id: 'map-bounds',
+            name: 'Две точки',
+            createdAt: now.subtract(const Duration(days: 1)),
+            startsAt: now.subtract(const Duration(hours: 1)),
+            endsAt: now.add(const Duration(hours: 2)),
+            members: [
+              GroupMember(id: 'maria', name: 'Мария'),
+              GroupMember(id: 'alexey', name: 'Алексей'),
+            ],
+            memberLocations: [
+              GroupMemberLocation(
+                memberId: 'maria',
+                coordinate: GeoCoordinate(
+                  latitude: moscow.latitude,
+                  longitude: moscow.longitude,
+                ),
+                updatedAt: now,
+              ),
+              GroupMemberLocation(
+                memberId: 'alexey',
+                coordinate: GeoCoordinate(
+                  latitude: vladivostok.latitude,
+                  longitude: vladivostok.longitude,
+                ),
+                updatedAt: now,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final fit = tester
+        .widget<FlutterMap>(find.byType(FlutterMap))
+        .options
+        .initialCameraFit;
+    expect(fit, isA<FitBounds>());
+    final boundsFit = fit! as FitBounds;
+    expect(boundsFit.padding, const EdgeInsets.all(48));
+    expect(boundsFit.bounds.contains(moscow), isTrue);
+    expect(boundsFit.bounds.contains(vladivostok), isTrue);
   });
 
   testWidgets('a planned group does not build the map', (tester) async {
