@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import 'package:geo_groups/current_location_provider.dart';
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/user_profile.dart';
 
@@ -11,6 +14,7 @@ class JoinGroupConfirmationScreen extends StatefulWidget {
     required this.fallbackName,
     required this.onJoin,
     this.repository,
+    this.locationProvider,
   });
 
   final GeoGroup group;
@@ -19,6 +23,7 @@ class JoinGroupConfirmationScreen extends StatefulWidget {
   final Future<InvitationAcceptResult> Function(String name, String avatarId)
   onJoin;
   final UserProfileRepository? repository;
+  final CurrentLocationProvider? locationProvider;
 
   @override
   State<JoinGroupConfirmationScreen> createState() =>
@@ -114,6 +119,8 @@ class _JoinGroupConfirmationScreenState
       return;
     }
     if (result == InvitationAcceptResult.joined) {
+      final provider = widget.locationProvider ?? DeviceLocationProvider();
+      unawaited(_requestLocationAccess(provider));
       Navigator.of(context).pop(true);
       return;
     }
@@ -121,6 +128,12 @@ class _JoinGroupConfirmationScreenState
       _submitting = false;
       _joinError = _messageFor(result);
     });
+  }
+
+  Future<void> _requestLocationAccess(CurrentLocationProvider provider) async {
+    try {
+      await provider.ensurePermissionForJoin();
+    } catch (_) {}
   }
 
   String _messageFor(InvitationAcceptResult result) {

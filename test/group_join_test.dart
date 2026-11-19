@@ -1,12 +1,18 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:geo_groups/current_location_provider.dart';
+import 'package:geo_groups/geo_coordinate.dart';
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/group_invitation.dart';
 import 'package:geo_groups/group_screen.dart';
 import 'package:geo_groups/join_group_confirmation_screen.dart';
 import 'package:geo_groups/user_profile.dart';
+
+import 'fake_location_device.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -210,6 +216,7 @@ void main() {
                         userId: 'screen-user',
                         fallbackName: 'Запасное',
                         repository: repository,
+                        locationProvider: const _SilentJoinLocation(),
                         onJoin: (name, avatarId) async {
                           joined.add((name, avatarId));
                           return InvitationAcceptResult.joined;
@@ -328,6 +335,123 @@ void main() {
     expect(joins, 0);
   });
 
+  testWidgets('joining continues when location access fails', (tester) async {
+    final denied = FakeLocationDevice(
+      permission: LocationAccess.denied,
+      afterRequest: LocationAccess.denied,
+    );
+    await _confirmJoin(tester, id: 'join-denied', device: denied);
+    expect(denied.requests, 1);
+
+    final forever = FakeLocationDevice(
+      permission: LocationAccess.deniedForever,
+    );
+    await _confirmJoin(tester, id: 'join-forever', device: forever);
+    expect(forever.requests, 0);
+
+    final broken = FakeLocationDevice(serviceError: StateError('offline'));
+    await _confirmJoin(tester, id: 'join-broken', device: broken);
+    expect(broken.requests, 0);
+  });
+
+  testWidgets('an existing location grant is not requested again', (
+    tester,
+  ) async {
+    final device = FakeLocationDevice(permission: LocationAccess.granted);
+    await _confirmJoin(tester, id: 'join-granted', device: device);
+    expect(device.checks, greaterThan(0));
+    expect(device.requests, 0);
+  });
+
+  testWidgets('successful join does not wait for the location prompt', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final gate = Completer<LocationAccess>();
+    final device = FakeLocationDevice(
+      permission: LocationAccess.denied,
+      permissionRequestGate: gate,
+    );
+    const userId = 'join-prompt-user';
+    final now = DateTime.now();
+    final group = GeoGroup(
+      id: 'join-prompt',
+      name: 'Группа join-prompt',
+      createdAt: now,
+      startsAt: now.subtract(const Duration(hours: 1)),
+      endsAt: now.add(const Duration(hours: 2)),
+      qrInviteToken: 'token-join-prompt',
+      members: [
+        GroupMember(
+          id: 'organizer-join-prompt',
+          name: 'Организатор',
+          role: MemberRole.organizer,
+        ),
+      ],
+    );
+    GroupsStore.instance.addGroup(group);
+    final repository = _MemoryProfiles()
+      ..profiles[userId] = const UserProfile(
+        userId: userId,
+        displayName: 'Антон',
+        avatarId: defaultAvatarId,
+      );
+    bool? popped;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            return Scaffold(
+              body: TextButton(
+                onPressed: () {
+                  Navigator.of(context)
+                      .push<bool>(
+                        PageRouteBuilder<bool>(
+                          transitionDuration: Duration.zero,
+                          reverseTransitionDuration: Duration.zero,
+                          pageBuilder: (context, _, _) {
+                            return JoinGroupConfirmationScreen(
+                              group: group,
+                              userId: userId,
+                              fallbackName: 'Запасное',
+                              repository: repository,
+                              locationProvider: DeviceLocationProvider(
+                                device: device,
+                              ),
+                              onJoin: (name, avatarId) async {
+                                return InvitationAcceptResult.joined;
+                              },
+                            );
+                          },
+                        ),
+                      )
+                      .then((value) {
+                        popped = value;
+                      });
+                },
+                child: const Text('Открыть'),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    await tester.tap(find.text('Открыть'));
+    await tester.pumpAndSettle();
+    expect(find.text('Вступление в группу'), findsOneWidget);
+
+    await tester.tap(find.text('Вступить в группу'));
+    await tester.pump();
+
+    expect(popped, isTrue);
+    expect(find.text('Вступление в группу'), findsNothing);
+    expect(device.requests, 1);
+    expect(gate.isCompleted, isFalse);
+  });
+
   test('a member without an avatar id uses the default avatar', () {
     final member = GroupMember(id: 'legacy', name: 'Старый', avatarId: '');
 
@@ -363,17 +487,100 @@ void main() {
     final avatars = tester
         .widgetList<ProfileAvatar>(find.byType(ProfileAvatar))
         .toList();
-    expect(
-      avatars.map((avatar) => (avatar.displayName, avatar.avatarId)),
-      [
-        ('В походе', 'blue_face'),
-        ('Старый', defaultAvatarId),
-      ],
-    );
+    expect(avatars.map((avatar) => (avatar.displayName, avatar.avatarId)), [
+      ('В походе', 'blue_face'),
+      ('Старый', defaultAvatarId),
+    ]);
     expect(find.text(memberInitials('В походе')), findsNothing);
     expect(find.text(memberInitials('Старый')), findsNothing);
     expect(find.byIcon(Icons.face), findsOneWidget);
   });
+}
+
+Future<void> _confirmJoin(
+  WidgetTester tester, {
+  required String id,
+  required FakeLocationDevice device,
+}) async {
+  tester.view.physicalSize = const Size(800, 1600);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+  final now = DateTime.now();
+  final group = GeoGroup(
+    id: id,
+    name: 'Группа $id',
+    createdAt: now,
+    startsAt: now.subtract(const Duration(hours: 1)),
+    endsAt: now.add(const Duration(hours: 2)),
+    qrInviteToken: 'token-$id',
+    members: [
+      GroupMember(
+        id: 'organizer-$id',
+        name: 'Организатор',
+        role: MemberRole.organizer,
+      ),
+    ],
+  );
+  GroupsStore.instance.addGroup(group);
+  final repository = _MemoryProfiles()
+    ..profiles[id] = UserProfile(
+      userId: id,
+      displayName: 'Антон',
+      avatarId: defaultAvatarId,
+    );
+  var joined = false;
+  await tester.pumpWidget(
+    MaterialApp(
+      key: ValueKey(id),
+      home: Builder(
+        builder: (context) {
+          return Scaffold(
+            body: TextButton(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (context) => JoinGroupConfirmationScreen(
+                      group: group,
+                      userId: id,
+                      fallbackName: 'Запасное',
+                      repository: repository,
+                      locationProvider: DeviceLocationProvider(device: device),
+                      onJoin: (name, avatarId) async {
+                        joined = true;
+                        return InvitationAcceptResult.joined;
+                      },
+                    ),
+                  ),
+                );
+              },
+              child: Text('Открыть $id'),
+            ),
+          );
+        },
+      ),
+    ),
+  );
+  await tester.tap(find.text('Открыть $id'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Вступить в группу'));
+  await tester.pumpAndSettle();
+
+  expect(joined, isTrue);
+  expect(find.text('Вступление в группу'), findsNothing);
+  expect(find.text('Не удалось вступить в группу'), findsNothing);
+}
+
+class _SilentJoinLocation implements CurrentLocationProvider {
+  const _SilentJoinLocation();
+
+  @override
+  Future<LocationAccess> ensurePermissionForJoin() async {
+    return LocationAccess.unavailable;
+  }
+
+  @override
+  Future<GeoCoordinate?> currentPosition() async => null;
 }
 
 class _MemoryProfiles implements UserProfileRepository {

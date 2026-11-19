@@ -2,14 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import 'package:geo_groups/current_location_provider.dart';
 import 'package:geo_groups/geo_coordinate.dart';
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/map_time_format.dart';
 
 class GroupMapScreen extends StatelessWidget {
-  const GroupMapScreen({super.key, required this.group});
+  const GroupMapScreen({super.key, required this.group, this.locationProvider});
 
   final GeoGroup group;
+  final CurrentLocationProvider? locationProvider;
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +30,12 @@ class GroupMapScreen extends StatelessWidget {
                     style: textTheme.titleMedium,
                   ),
                 ),
-                Expanded(child: _MemberMap(group: group)),
+                Expanded(
+                  child: _MemberMap(
+                    group: group,
+                    locationProvider: locationProvider,
+                  ),
+                ),
               ],
             )
           : Center(
@@ -46,9 +53,10 @@ class GroupMapScreen extends StatelessWidget {
 }
 
 class _MemberMap extends StatefulWidget {
-  const _MemberMap({required this.group});
+  const _MemberMap({required this.group, required this.locationProvider});
 
   final GeoGroup group;
+  final CurrentLocationProvider? locationProvider;
 
   @override
   State<_MemberMap> createState() => _MemberMapState();
@@ -69,11 +77,86 @@ class _VisibleMember {
 class _MemberMapState extends State<_MemberMap> {
   final MapController _mapController = MapController();
   String? _selectedMemberId;
+  GeoCoordinate? _devicePosition;
+  DateTime? _deviceReadAt;
+  int _locationRequest = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDevicePosition();
+  }
+
+  @override
+  void didUpdateWidget(_MemberMap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.group.id != widget.group.id) {
+      _devicePosition = null;
+      _deviceReadAt = null;
+      _loadDevicePosition();
+    }
+  }
 
   @override
   void dispose() {
+    _locationRequest++;
     _mapController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadDevicePosition() async {
+    final request = ++_locationRequest;
+    final groupId = widget.group.id;
+    final provider = widget.locationProvider ?? DeviceLocationProvider();
+    GeoCoordinate? position;
+    try {
+      position = await provider.currentPosition();
+    } catch (_) {
+      position = null;
+    }
+    if (!mounted || request != _locationRequest || widget.group.id != groupId) {
+      return;
+    }
+    if (position == null) {
+      return;
+    }
+    final update = cameraUpdateForDevicePosition(
+      otherParticipantVisible: _otherParticipantVisible(),
+    );
+    setState(() {
+      _devicePosition = position;
+      _deviceReadAt = DateTime.now();
+    });
+    if (update != DeviceCameraUpdate.moveToDevice) {
+      return;
+    }
+    final point = LatLng(position.latitude, position.longitude);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          request != _locationRequest ||
+          widget.group.id != groupId) {
+        return;
+      }
+      _mapController.move(point, 13);
+    });
+  }
+
+  bool _otherParticipantVisible() {
+    for (final location in widget.group.memberLocations) {
+      GroupMember? member;
+      for (final candidate in widget.group.members) {
+        if (candidate.id == location.memberId) {
+          member = candidate;
+          break;
+        }
+      }
+      if (member != null &&
+          member.status == MembershipStatus.active &&
+          !member.isCurrentUser) {
+        return true;
+      }
+    }
+    return false;
   }
 
   void _toggleMember(String memberId) {
@@ -113,6 +196,40 @@ class _MemberMapState extends State<_MemberMap> {
         ),
       );
     }
+    return _withDevicePosition(visible);
+  }
+
+  List<_VisibleMember> _withDevicePosition(List<_VisibleMember> visible) {
+    final device = _devicePosition;
+    final readAt = _deviceReadAt;
+    if (device == null || readAt == null) {
+      return visible;
+    }
+    GroupMember? current;
+    for (final member in widget.group.members) {
+      if (member.isCurrentUser && member.status == MembershipStatus.active) {
+        current = member;
+        break;
+      }
+    }
+    if (current == null) {
+      return visible;
+    }
+    final overlay = _VisibleMember(
+      member: current,
+      location: GroupMemberLocation(
+        memberId: current.id,
+        coordinate: device,
+        updatedAt: readAt,
+      ),
+      point: LatLng(device.latitude, device.longitude),
+    );
+    final index = visible.indexWhere((item) => item.member.id == current!.id);
+    if (index >= 0) {
+      visible[index] = overlay;
+    } else {
+      visible.add(overlay);
+    }
     return visible;
   }
 
@@ -146,31 +263,10 @@ class _MemberMapState extends State<_MemberMap> {
       }
     }
     final points = [for (final item in visible) item.point];
+    final shown = _withoutStackedMarkers(visible);
     final markers = [
-      for (final item in visible)
-        Marker(
-          point: item.point,
-          width: 48,
-          height: 48,
-          alignment: Alignment.topCenter,
-          child: GestureDetector(
-            onTap: () => _toggleMember(item.member.id),
-            behavior: HitTestBehavior.opaque,
-            child: Tooltip(
-              message: item.member.name,
-              child: Semantics(
-                label: 'Позиция участника: ${item.member.name}',
-                child: Icon(
-                  Icons.location_on,
-                  color: item.member.id == selected?.member.id
-                      ? theme.colorScheme.primary
-                      : Colors.blue,
-                  size: 48,
-                ),
-              ),
-            ),
-          ),
-        ),
+      for (final item in shown)
+        _memberMarker(item, selected: item.member.id == selected?.member.id),
     ];
 
     return Column(
@@ -252,6 +348,7 @@ class _MemberMapState extends State<_MemberMap> {
   }
 
   MapOptions _optionsFor(List<LatLng> points) {
+    points = _uniquePoints(points);
     if (points.isEmpty) {
       return MapOptions(
         initialCenter: const LatLng(0, 0),
@@ -275,8 +372,52 @@ class _MemberMapState extends State<_MemberMap> {
     );
   }
 
+  Marker _memberMarker(_VisibleMember item, {required bool selected}) {
+    final organizer = item.member.role == MemberRole.organizer;
+    final currentUser = item.member.isCurrentUser;
+    final iconSize = selected ? 56.0 : 44.0;
+    final extent = iconSize + (organizer ? 12 : 4);
+    return Marker(
+      point: item.point,
+      width: extent,
+      height: extent,
+      alignment: Alignment.topCenter,
+      child: GestureDetector(
+        onTap: () => _toggleMember(item.member.id),
+        behavior: HitTestBehavior.opaque,
+        child: Tooltip(
+          message: item.member.name,
+          child: Semantics(
+            label: _markerLabel(item.member),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Icon(
+                    Icons.location_on,
+                    color: _pinColor(item.member),
+                    size: iconSize,
+                    shadows: _pinShadows(
+                      outlined: currentUser || selected,
+                      selected: selected,
+                    ),
+                  ),
+                ),
+                if (organizer)
+                  const Positioned(top: 0, right: 0, child: _OrganizerBadge()),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showAllVisibleMembers() {
-    final points = [for (final item in _visibleMembers()) item.point];
+    final points = _uniquePoints([
+      for (final item in _visibleMembers()) item.point,
+    ]);
     if (points.isEmpty) {
       return;
     }
@@ -291,6 +432,122 @@ class _MemberMapState extends State<_MemberMap> {
       ),
     );
   }
+}
+
+List<LatLng> _uniquePoints(List<LatLng> points) {
+  final unique = <(double, double), LatLng>{};
+  for (final point in points) {
+    unique.putIfAbsent((point.latitude, point.longitude), () => point);
+  }
+  return unique.values.toList();
+}
+
+List<_VisibleMember> _withoutStackedMarkers(List<_VisibleMember> visible) {
+  int priority(_VisibleMember item) {
+    if (item.member.isCurrentUser) {
+      return 0;
+    }
+    if (item.member.role == MemberRole.organizer) {
+      return 1;
+    }
+    return 2;
+  }
+
+  final kept = <(double, double), _VisibleMember>{};
+  for (final item in visible) {
+    final key = (item.point.latitude, item.point.longitude);
+    final current = kept[key];
+    if (current == null || priority(item) < priority(current)) {
+      kept[key] = item;
+    }
+  }
+  return [
+    for (final item in visible)
+      if (identical(kept[(item.point.latitude, item.point.longitude)], item))
+        item,
+  ];
+}
+
+String _markerLabel(GroupMember member) {
+  final organizer = member.role == MemberRole.organizer;
+  if (member.isCurrentUser && organizer) {
+    return 'Ваше местоположение, организатор';
+  }
+  if (member.isCurrentUser) {
+    return 'Ваше местоположение';
+  }
+  if (organizer) {
+    return 'Позиция организатора: ${member.name}';
+  }
+  return 'Позиция участника: ${member.name}';
+}
+
+Color _pinColor(GroupMember member) {
+  if (member.isCurrentUser) {
+    return const Color(0xFF00897B);
+  }
+  if (member.role == MemberRole.organizer) {
+    return Colors.purple;
+  }
+  return Colors.blue;
+}
+
+List<Shadow> _pinShadows({required bool outlined, required bool selected}) {
+  const spread = 1.4;
+  return [
+    if (outlined) ...[
+      for (final offset in const [
+        Offset(-spread, 0),
+        Offset(spread, 0),
+        Offset(0, -spread),
+        Offset(0, spread),
+        Offset(-spread, -spread),
+        Offset(spread, -spread),
+        Offset(-spread, spread),
+        Offset(spread, spread),
+      ])
+        Shadow(color: Colors.white, offset: offset),
+    ],
+    if (selected)
+      const Shadow(
+        color: Color(0x8A000000),
+        blurRadius: 6,
+        offset: Offset(0, 2),
+      ),
+  ];
+}
+
+class _OrganizerBadge extends StatelessWidget {
+  const _OrganizerBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return const DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.purple,
+        shape: BoxShape.circle,
+        border: Border.fromBorderSide(
+          BorderSide(color: Colors.white, width: 1.5),
+        ),
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(2),
+        child: Icon(Icons.star, size: 12, color: Colors.white),
+      ),
+    );
+  }
+}
+
+/// Как сдвинуть камеру, когда пришла позиция устройства.
+enum DeviceCameraUpdate { moveToDevice, keep }
+
+DeviceCameraUpdate cameraUpdateForDevicePosition({
+  required bool otherParticipantVisible,
+}) {
+  if (otherParticipantVisible) {
+    return DeviceCameraUpdate.keep;
+  }
+  return DeviceCameraUpdate.moveToDevice;
 }
 
 String _mapParticipantsText(int count) {
