@@ -7,6 +7,7 @@ import 'package:geo_groups/group_card.dart';
 import 'package:geo_groups/group_schedule_form.dart';
 import 'package:geo_groups/group_screen.dart';
 import 'package:geo_groups/invite_source_sheet.dart';
+import 'package:geo_groups/user_profile.dart';
 
 class CreatedGroupsScreen extends StatefulWidget {
   const CreatedGroupsScreen({super.key});
@@ -113,28 +114,45 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen>
       return;
     }
 
+    final creatorId = currentDemoUserId;
+    UserProfile profile;
+    try {
+      profile = await UserProfileStore.instance.loadProfile(
+        userId: creatorId,
+        fallbackName: currentDemoUser.name,
+      );
+    } catch (_) {
+      profile = UserProfile(
+        userId: creatorId,
+        displayName: currentDemoUser.name,
+        avatarId: defaultAvatarId,
+      );
+    }
+    if (!mounted) {
+      return;
+    }
+
     final group = GeoGroup(
       id: GroupsStore.instance.nextId('group'),
       name: draft.name,
       createdAt: DateTime.now(),
       startsAt: draft.startsAt,
       endsAt: draft.endsAt,
-      createdByUserId: currentDemoUserId,
+      createdByUserId: creatorId,
       qrInviteToken: GroupsStore.instance.nextQrInviteToken(),
-      members: [
-        GroupMember(
-          id: currentDemoUser.id,
-          name: currentDemoUser.name,
-          role: MemberRole.organizer,
-          status: MembershipStatus.active,
-        ),
-        for (final person in draft.invited)
-          GroupMember(
-            id: person.id,
-            name: person.name,
-            status: MembershipStatus.invited,
-          ),
-      ],
+      members: membersForNewGroup(
+        creatorId: creatorId,
+        creatorName: profile.displayName,
+        creatorAvatarId: profile.avatarId,
+        others: [
+          for (final person in draft.invited)
+            GroupMember(
+              id: person.id,
+              name: person.name,
+              status: MembershipStatus.invited,
+            ),
+        ],
+      ),
     );
     GroupsStore.instance.addGroup(group);
     GroupsStore.instance.syncInvitations(group);

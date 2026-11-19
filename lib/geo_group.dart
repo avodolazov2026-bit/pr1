@@ -50,6 +50,32 @@ DirectoryPerson get currentDemoUser {
   return demoUsers.first;
 }
 
+/// Участники новой группы. Создатель всегда активный организатор и встречается один раз.
+List<GroupMember> membersForNewGroup({
+  required String creatorId,
+  required String creatorName,
+  String creatorAvatarId = defaultAvatarId,
+  List<GroupMember> others = const [],
+}) {
+  final avatarId = creatorAvatarId.isEmpty ? defaultAvatarId : creatorAvatarId;
+  final members = <GroupMember>[
+    GroupMember(
+      id: creatorId,
+      name: creatorName,
+      avatarId: avatarId,
+      role: MemberRole.organizer,
+      status: MembershipStatus.active,
+    ),
+  ];
+  final seen = <String>{creatorId};
+  for (final member in others) {
+    if (seen.add(member.id)) {
+      members.add(member);
+    }
+  }
+  return members;
+}
+
 const defaultAvatarId = 'teal_person';
 
 class GroupMember {
