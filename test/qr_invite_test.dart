@@ -285,11 +285,7 @@ void main() {
         home: Builder(
           builder: (context) => Scaffold(
             body: FilledButton(
-              onPressed: () => showInviteParticipants(
-                context: context,
-                excludedIds: const <String>{},
-                initiallySelectedIds: const <String>{},
-              ),
+              onPressed: () => showGroupInviteOptions(context: context),
               child: const Text('Пригласить'),
             ),
           ),
@@ -322,10 +318,8 @@ void main() {
         home: Builder(
           builder: (context) => Scaffold(
             body: FilledButton(
-              onPressed: () => showInviteParticipants(
+              onPressed: () => showGroupInviteOptions(
                 context: context,
-                excludedIds: const <String>{},
-                initiallySelectedIds: const <String>{},
                 group: group,
               ),
               child: const Text('Пригласить'),
@@ -459,10 +453,8 @@ Future<void> _openInviteSheet(
       home: Builder(
         builder: (context) => Scaffold(
           body: FilledButton(
-            onPressed: () => showInviteParticipants(
+            onPressed: () => showGroupInviteOptions(
               context: context,
-              excludedIds: const <String>{},
-              initiallySelectedIds: const <String>{},
               group: group,
               shareInvite: shareInvite,
             ),

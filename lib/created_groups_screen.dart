@@ -144,14 +144,6 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen>
         creatorId: creatorId,
         creatorName: profile.displayName,
         creatorAvatarId: profile.avatarId,
-        others: [
-          for (final person in draft.invited)
-            GroupMember(
-              id: person.id,
-              name: person.name,
-              status: MembershipStatus.invited,
-            ),
-        ],
       ),
     );
     GroupsStore.instance.addGroup(group);
@@ -285,9 +277,21 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen>
                           );
                         }
                         final group = groups[index - 1];
+                        final canInvite =
+                            group.currentUserIsActiveOrganizer &&
+                            !group.isFinished &&
+                            group.qrInviteToken.isNotEmpty;
                         return GroupCard(
                           group: group,
                           onTap: () => _openGroup(group),
+                          onInvite: canInvite
+                              ? () {
+                                  showGroupInviteOptions(
+                                    context: context,
+                                    group: group,
+                                  );
+                                }
+                              : null,
                         );
                       },
                     ),
@@ -304,13 +308,11 @@ class _GroupDraft {
     required this.name,
     required this.startsAt,
     required this.endsAt,
-    required this.invited,
   });
 
   final String name;
   final DateTime startsAt;
   final DateTime? endsAt;
-  final List<DirectoryPerson> invited;
 }
 
 class _NewGroupSheet extends StatefulWidget {
@@ -327,7 +329,6 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
   DateTime? _endDate;
   TimeOfDay? _endTime;
   bool _indefinite = false;
-  final List<DirectoryPerson> _invited = <DirectoryPerson>[];
 
   @override
   void initState() {
@@ -424,26 +425,6 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
     return DateTime(date.year, date.month, date.day, time.hour, time.minute);
   }
 
-  Future<void> _pickInvitees() async {
-    final selected = await showInviteParticipants(
-      context: context,
-      excludedIds: {currentDemoUserId},
-      initiallySelectedIds: _invited.map((person) => person.id).toSet(),
-    );
-    if (selected == null || !mounted) {
-      return;
-    }
-    setState(() {
-      _invited
-        ..clear()
-        ..addAll(selected);
-    });
-  }
-
-  void _removeInvitee(DirectoryPerson person) {
-    setState(() => _invited.remove(person));
-  }
-
   GroupFormIssue? _formIssue() {
     final endsAt = _indefinite ? null : _endsAt;
     return groupFormIssue(
@@ -466,7 +447,6 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
         name: _nameController.text.trim(),
         startsAt: _startsAt,
         endsAt: _indefinite ? null : _endsAt,
-        invited: List<DirectoryPerson>.of(_invited),
       ),
     );
   }
@@ -585,38 +565,6 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
               ),
               title: Text('${currentDemoUser.name} — организатор'),
             ),
-            OutlinedButton.icon(
-              onPressed: _pickInvitees,
-              icon: const Icon(Icons.person_add_alt_1_outlined),
-              label: const Text('Пригласить участников'),
-            ),
-            if (_invited.isEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(
-                  'Пока никто не приглашён',
-                  style: textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              )
-            else
-              for (final person in _invited)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(person.name),
-                  subtitle: Text(
-                    'Ожидает ответа',
-                    style: textTheme.bodyMedium?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  trailing: IconButton(
-                    tooltip: 'Убрать',
-                    onPressed: () => _removeInvitee(person),
-                    icon: const Icon(Icons.close),
-                  ),
-                ),
             const SizedBox(height: 20),
             Row(
               children: [

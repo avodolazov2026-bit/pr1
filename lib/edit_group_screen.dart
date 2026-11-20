@@ -252,48 +252,11 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
     });
   }
 
-  Future<void> _invitePeople() async {
-    final excluded = _members
-        .where(
-          (member) =>
-              member.isOrganizer ||
-              member.status == MembershipStatus.active ||
-              member.status == MembershipStatus.invited,
-        )
-        .map((member) => member.id)
-        .toSet();
-    final selected = await showInviteParticipants(
+  Future<void> _invitePeople() {
+    return showGroupInviteOptions(
       context: context,
-      excludedIds: excluded,
-      initiallySelectedIds: const <String>{},
       group: widget.group,
     );
-    if (selected == null || !mounted) {
-      return;
-    }
-    setState(() {
-      for (final person in selected) {
-        final existing = _members.where((member) => member.id == person.id);
-        if (existing.isEmpty) {
-          _members.add(
-            _MemberDraft(
-              id: person.id,
-              name: person.name,
-              originalStatus: MembershipStatus.invited,
-              status: MembershipStatus.invited,
-            ),
-          );
-          continue;
-        }
-        final member = existing.first;
-        if (member.status == MembershipStatus.active ||
-            member.status == MembershipStatus.invited ||
-            member.isOrganizer) {
-          continue;
-        }
-        member.status = MembershipStatus.invited;
-      }
-    });
   }
 
   List<GroupMember> _membersToSave() {

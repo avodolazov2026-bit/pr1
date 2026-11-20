@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'package:geo_groups/geo_group.dart';
-import 'package:geo_groups/invite_people_sheet.dart';
 import 'package:geo_groups/qr_invite_screen.dart';
 
-enum _InviteChannel { demoList, contacts, qrCode, shareLink }
+enum _InviteChannel { qrCode, shareLink }
 
 typedef ShareGroupInvite = Future<void> Function({
   required String text,
@@ -19,10 +18,8 @@ Future<void> shareGroupInvite({
   await SharePlus.instance.share(ShareParams(text: text, subject: subject));
 }
 
-Future<List<DirectoryPerson>?> showInviteParticipants({
+Future<void> showGroupInviteOptions({
   required BuildContext context,
-  required Set<String> excludedIds,
-  required Set<String> initiallySelectedIds,
   GeoGroup? group,
   ShareGroupInvite? shareInvite,
 }) async {
@@ -34,39 +31,10 @@ Future<List<DirectoryPerson>?> showInviteParticipants({
     builder: (context) => _InviteSourceSheet(group: group),
   );
   if (channel == null || !context.mounted) {
-    return null;
+    return;
   }
 
   switch (channel) {
-    case _InviteChannel.demoList:
-      if (group != null && group.isFinished) {
-        await _showNotice(
-          context,
-          title: 'Группа завершена',
-          message: 'В завершённую группу нельзя отправить новое приглашение.',
-        );
-        return null;
-      }
-      if (!context.mounted) {
-        return null;
-      }
-      return showModalBottomSheet<List<DirectoryPerson>>(
-        context: context,
-        isScrollControlled: true,
-        useSafeArea: true,
-        showDragHandle: true,
-        builder: (context) => InvitePeopleSheet(
-          initiallySelectedIds: initiallySelectedIds,
-          excludedIds: excludedIds,
-        ),
-      );
-    case _InviteChannel.contacts:
-      await _showNotice(
-        context,
-        title: 'Контакты телефона',
-        message: 'Выбор контактов появится после подключения аккаунтов, сервера и разрешения на доступ к адресной книге.',
-      );
-      return null;
     case _InviteChannel.qrCode:
       if (group == null || group.qrInviteToken.isEmpty) {
         await _showNotice(
@@ -75,7 +43,7 @@ Future<List<DirectoryPerson>?> showInviteParticipants({
           message:
               'Сначала сохраните группу, чтобы создать QR-код приглашения.',
         );
-        return null;
+        return;
       }
       if (group.isFinished) {
         await _showNotice(
@@ -83,17 +51,17 @@ Future<List<DirectoryPerson>?> showInviteParticipants({
           title: 'QR-код группы',
           message: 'В завершённую группу нельзя приглашать участников.',
         );
-        return null;
+        return;
       }
       if (!group.currentUserIsActiveOrganizer || !context.mounted) {
-        return null;
+        return;
       }
       await Navigator.of(context).push<void>(
         MaterialPageRoute<void>(
           builder: (context) => QrInviteScreen(group: group),
         ),
       );
-      return null;
+      return;
     case _InviteChannel.shareLink:
       if (group == null) {
         await _showNotice(
@@ -102,7 +70,7 @@ Future<List<DirectoryPerson>?> showInviteParticipants({
           message:
               'Сначала сохраните группу, чтобы создать ссылку-приглашение.',
         );
-        return null;
+        return;
       }
       if (group.isFinished) {
         await _showNotice(
@@ -110,17 +78,17 @@ Future<List<DirectoryPerson>?> showInviteParticipants({
           title: 'Ссылка-приглашение',
           message: 'В завершённую группу нельзя приглашать участников.',
         );
-        return null;
+        return;
       }
       if (!group.currentUserIsActiveOrganizer || !context.mounted) {
-        return null;
+        return;
       }
       final share = shareInvite ?? shareGroupInvite;
       await share(
         text: _inviteShareText(group),
         subject: 'Приглашение в Geo Groups',
       );
-      return null;
+      return;
   }
 }
 
@@ -173,20 +141,6 @@ class _InviteSourceSheet extends StatelessWidget {
         children: [
           Text('Пригласить участников', style: textTheme.titleLarge),
           const SizedBox(height: 8),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.person_search_outlined),
-            title: const Text('Выбрать из списка'),
-            subtitle: const Text('Выбрать демонстрационных пользователей'),
-            onTap: () => Navigator.of(context).pop(_InviteChannel.demoList),
-          ),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.contacts_outlined),
-            title: const Text('Контакты телефона'),
-            subtitle: const Text('Выбрать людей из адресной книги'),
-            onTap: () => Navigator.of(context).pop(_InviteChannel.contacts),
-          ),
           ListTile(
             contentPadding: EdgeInsets.zero,
             enabled: canOpenQr && !savedAndFinished,

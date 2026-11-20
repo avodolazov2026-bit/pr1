@@ -6,6 +6,7 @@ import 'package:geo_groups/created_groups_screen.dart';
 import 'package:geo_groups/current_location_provider.dart';
 import 'package:geo_groups/geo_coordinate.dart';
 import 'package:geo_groups/geo_group.dart';
+import 'package:geo_groups/group_card.dart';
 import 'package:geo_groups/group_invitation.dart';
 import 'package:geo_groups/group_map_screen.dart';
 import 'package:geo_groups/my_groups_screen.dart';
@@ -207,6 +208,157 @@ void main() {
     expect(pin.shadows?.any((shadow) => shadow.color == Colors.white), isTrue);
     expect(find.byIcon(Icons.location_on), findsOneWidget);
   });
+
+  testWidgets('invite button is separate from opening the card', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    final group = GeoGroup(
+      id: 'card-invite',
+      name: 'Карточка',
+      createdAt: now,
+      startsAt: now.subtract(const Duration(hours: 1)),
+      endsAt: now.add(const Duration(hours: 2)),
+      members: [
+        GroupMember(
+          id: currentDemoUserId,
+          name: 'Вы',
+          role: MemberRole.organizer,
+        ),
+      ],
+    );
+    var opened = 0;
+    var invited = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GroupCard(group: group, onTap: () => opened += 1),
+        ),
+      ),
+    );
+    expect(find.text('Пригласить в группу'), findsNothing);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GroupCard(
+            group: group,
+            onTap: () => opened += 1,
+            onInvite: () => invited += 1,
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Пригласить в группу'), findsOneWidget);
+
+    await tester.tap(find.text('Пригласить в группу'));
+    await tester.pump();
+    expect(invited, 1);
+    expect(opened, 0);
+
+    await tester.tap(find.text('Карточка'));
+    await tester.pump();
+    expect(opened, 1);
+    expect(invited, 1);
+  });
+
+  testWidgets('created groups show invite only for an open organizer group', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 2000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final now = DateTime.now();
+    GroupsStore.instance
+      ..addGroup(
+        _createdGroup(
+          id: 'invite-active',
+          name: 'Активная организатора',
+          startsAt: now.subtract(const Duration(hours: 1)),
+          endsAt: now.add(const Duration(hours: 2)),
+        ),
+      )
+      ..addGroup(
+        _createdGroup(
+          id: 'invite-upcoming',
+          name: 'Будущая организатора',
+          startsAt: now.add(const Duration(hours: 2)),
+          endsAt: now.add(const Duration(hours: 4)),
+        ),
+      )
+      ..addGroup(
+        _createdGroup(
+          id: 'invite-finished',
+          name: 'Завершённая организатора',
+          startsAt: now.subtract(const Duration(days: 2)),
+          endsAt: now.subtract(const Duration(hours: 1)),
+        ),
+      )
+      ..addGroup(
+        _createdGroup(
+          id: 'invite-participant',
+          name: 'Группа участника',
+          startsAt: now.subtract(const Duration(hours: 1)),
+          endsAt: now.add(const Duration(hours: 2)),
+          role: MemberRole.participant,
+        ),
+      )
+      ..addGroup(
+        _createdGroup(
+          id: 'invite-no-token',
+          name: 'Без ссылки',
+          startsAt: now.subtract(const Duration(hours: 1)),
+          endsAt: now.add(const Duration(hours: 2)),
+          qrInviteToken: '',
+        ),
+      );
+
+    await tester.pumpWidget(const MaterialApp(home: CreatedGroupsScreen()));
+    await tester.pumpAndSettle();
+
+    expect(_inviteOn('Активная организатора'), findsOneWidget);
+    expect(_inviteOn('Будущая организатора'), findsOneWidget);
+    expect(_inviteOn('Завершённая организатора'), findsNothing);
+    expect(_inviteOn('Группа участника'), findsNothing);
+    expect(_inviteOn('Без ссылки'), findsNothing);
+  });
+}
+
+GeoGroup _createdGroup({
+  required String id,
+  required String name,
+  required DateTime startsAt,
+  DateTime? endsAt,
+  MemberRole role = MemberRole.organizer,
+  String qrInviteToken = 'saved-token',
+}) {
+  return GeoGroup(
+    id: id,
+    name: name,
+    createdAt: DateTime.now(),
+    startsAt: startsAt,
+    endsAt: endsAt,
+    createdByUserId: currentDemoUserId,
+    qrInviteToken: qrInviteToken,
+    members: [
+      GroupMember(
+        id: currentDemoUserId,
+        name: 'Вы',
+        role: role,
+        status: MembershipStatus.active,
+      ),
+    ],
+  );
+}
+
+Finder _inviteOn(String groupName) {
+  return find.descendant(
+    of: find.widgetWithText(GroupCard, groupName),
+    matching: find.text('Пригласить в группу'),
+  );
 }
 
 Finder _semantics(String label) {
