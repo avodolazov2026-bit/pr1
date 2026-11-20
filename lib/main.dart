@@ -10,11 +10,16 @@ import 'package:geo_groups/invitations_screen.dart';
 import 'package:geo_groups/join_group_route.dart';
 import 'package:geo_groups/my_groups_screen.dart';
 import 'package:geo_groups/profile_screen.dart';
+import 'package:geo_groups/supabase_bootstrap.dart';
 
 final appNavigatorKey = GlobalKey<NavigatorState>();
 
 void main() {
-  runApp(const MyApp());
+  if (!supabaseConfigFromEnvironment().isConfigured) {
+    runApp(const MyApp());
+    return;
+  }
+  runApp(const _SupabaseStartupApp());
 }
 
 abstract class InviteLinkSource {
@@ -33,6 +38,69 @@ class AppLinksInviteSource implements InviteLinkSource {
 
   @override
   Stream<Uri> get uriStream => _links.uriLinkStream;
+}
+
+class _SupabaseStartupApp extends StatefulWidget {
+  const _SupabaseStartupApp();
+
+  @override
+  State<_SupabaseStartupApp> createState() => _SupabaseStartupAppState();
+}
+
+class _SupabaseStartupAppState extends State<_SupabaseStartupApp> {
+  var _connecting = true;
+  SupabaseStartup? _startup;
+
+  @override
+  void initState() {
+    super.initState();
+    _connect();
+  }
+
+  Future<void> _connect() async {
+    final result = await bootstrapSupabase();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _connecting = false;
+      _startup = result;
+    });
+  }
+
+  void _retry() {
+    setState(() {
+      _connecting = true;
+      _startup = null;
+    });
+    _connect();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_connecting) {
+      return const MaterialApp(
+        home: Scaffold(body: Center(child: CircularProgressIndicator())),
+      );
+    }
+    if (_startup == SupabaseStartup.ready) {
+      return const MyApp();
+    }
+    return MaterialApp(
+      home: Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Не удалось подключиться'),
+              const SizedBox(height: 16),
+              FilledButton(onPressed: _retry, child: const Text('Повторить')),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class MyApp extends StatefulWidget {
