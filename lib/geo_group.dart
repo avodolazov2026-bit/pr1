@@ -252,18 +252,23 @@ class GeoGroup {
 
   bool get isIndefinite => endsAt == null;
 
-  bool get isUpcoming => !endedByOrganizer && DateTime.now().isBefore(startsAt);
+  bool get isUpcoming =>
+      endedAt == null &&
+      !endedByOrganizer &&
+      DateTime.now().isBefore(startsAt);
 
   bool get isActive {
     final endsAt = this.endsAt;
-    return !endedByOrganizer &&
+    return endedAt == null &&
+        !endedByOrganizer &&
         !DateTime.now().isBefore(startsAt) &&
         (endsAt == null || DateTime.now().isBefore(endsAt));
   }
 
   bool get isFinished {
     final endsAt = this.endsAt;
-    return endedByOrganizer ||
+    return endedAt != null ||
+        endedByOrganizer ||
         (endsAt != null && !DateTime.now().isBefore(endsAt));
   }
 
@@ -380,6 +385,13 @@ class GroupsStore {
 
   void addGroup(GeoGroup group) {
     groups.insert(0, group);
+  }
+
+  /// Заменяет список групп. Приглашения не меняются.
+  void replaceGroups(List<GeoGroup> next) {
+    groups
+      ..clear()
+      ..addAll(next);
   }
 
   GeoGroup? groupById(String id) {

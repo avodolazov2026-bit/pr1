@@ -1,11 +1,14 @@
 import 'dart:async';
 
 import 'package:app_links/app_links.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:geo_groups/app_link_handler.dart';
 import 'package:geo_groups/created_groups_screen.dart';
 import 'package:geo_groups/geo_group.dart';
+import 'package:geo_groups/group_repository.dart';
 import 'package:geo_groups/invitations_screen.dart';
 import 'package:geo_groups/join_group_route.dart';
 import 'package:geo_groups/my_groups_screen.dart';
@@ -62,10 +65,36 @@ class _SupabaseStartupAppState extends State<_SupabaseStartupApp> {
     if (!mounted) {
       return;
     }
-    setState(() {
-      _connecting = false;
-      _startup = result;
-    });
+    if (result != SupabaseStartup.ready) {
+      setState(() {
+        _connecting = false;
+        _startup = result;
+      });
+      return;
+    }
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      final groups = await groupRepositoryFor(result).loadMyGroups();
+      if (!mounted) {
+        return;
+      }
+      publishLoadedGroups(result, groups, currentUserId: userId);
+      setState(() {
+        _connecting = false;
+        _startup = result;
+      });
+    } catch (error) {
+      if (kDebugMode) {
+        debugPrint('Group read failed: ${error.runtimeType}');
+      }
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _connecting = false;
+        _startup = SupabaseStartup.failed;
+      });
+    }
   }
 
   void _retry() {

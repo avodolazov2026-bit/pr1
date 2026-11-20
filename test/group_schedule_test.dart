@@ -98,6 +98,17 @@ void main() {
       expect(cancelled.statusBadge, 'Отменена');
       expect(cancelled.scheduleSummary, contains('Была запланирована на'));
 
+      final endedOnServer = buildGroup(
+        id: 'status-ended-at',
+        startsAt: now.subtract(const Duration(hours: 1)),
+        endsAt: now.add(const Duration(days: 1)),
+      );
+      endedOnServer.endedAt = now.subtract(const Duration(minutes: 5));
+      expect(endedOnServer.endedByOrganizer, isFalse);
+      expect(endedOnServer.isFinished, isTrue);
+      expect(endedOnServer.isActive, isFalse);
+      expect(endedOnServer.isUpcoming, isFalse);
+
       expect(
         validateGroupSchedule(
           originalStartsAt: now.add(const Duration(days: 1)),
