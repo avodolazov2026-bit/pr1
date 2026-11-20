@@ -12,6 +12,7 @@
 .swiftpm/
 migrate_working_dir/
 /run_dev.ps1
+supabase/.temp/
 
 # IntelliJ related
 *.iml
