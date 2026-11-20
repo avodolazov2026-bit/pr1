@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:app_links/app_links.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -83,10 +82,7 @@ class _SupabaseStartupAppState extends State<_SupabaseStartupApp> {
         _connecting = false;
         _startup = result;
       });
-    } catch (error) {
-      if (kDebugMode) {
-        debugPrint('Group read failed: ${error.runtimeType}');
-      }
+    } catch (_) {
       if (!mounted) {
         return;
       }
