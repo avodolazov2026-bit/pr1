@@ -253,10 +253,7 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
   }
 
   Future<void> _invitePeople() {
-    return showGroupInviteOptions(
-      context: context,
-      group: widget.group,
-    );
+    return showGroupInviteOptions(context: context, group: widget.group);
   }
 
   List<GroupMember> _membersToSave() {

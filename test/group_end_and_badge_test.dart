@@ -214,10 +214,8 @@ void main() {
         home: Builder(
           builder: (context) => Scaffold(
             body: FilledButton(
-              onPressed: () => showGroupInviteOptions(
-                context: context,
-                group: group,
-              ),
+              onPressed: () =>
+                  showGroupInviteOptions(context: context, group: group),
               child: const Text('Пригласить'),
             ),
           ),

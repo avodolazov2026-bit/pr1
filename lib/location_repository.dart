@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:geo_groups/geo_coordinate.dart';
 import 'package:geo_groups/supabase_bootstrap.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -15,6 +16,7 @@ abstract class LocationRepository {
 
 /// Локальный режим: к таблице locations не обращается.
 class LocalLocationRepository implements LocationRepository {
+  const LocalLocationRepository();
   @override
   Future<List<GroupMemberLocation>> loadGroupLocations(String groupId) async {
     return const [];
@@ -151,4 +153,26 @@ DateTime? _dateTime(Object? value) {
     return DateTime.tryParse(value);
   }
   return null;
+}
+
+/// Делает выбранный репозиторий позиций доступным экранам под [MaterialApp].
+class LocationRepositoryScope extends InheritedWidget {
+  const LocationRepositoryScope({
+    super.key,
+    required this.repository,
+    required super.child,
+  });
+
+  final LocationRepository repository;
+
+  static LocationRepository? maybeOf(BuildContext context) {
+    return context
+        .dependOnInheritedWidgetOfExactType<LocationRepositoryScope>()
+        ?.repository;
+  }
+
+  @override
+  bool updateShouldNotify(LocationRepositoryScope oldWidget) {
+    return oldWidget.repository != repository;
+  }
 }

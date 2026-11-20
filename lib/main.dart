@@ -10,6 +10,7 @@ import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/group_repository.dart';
 import 'package:geo_groups/invitations_screen.dart';
 import 'package:geo_groups/join_group_route.dart';
+import 'package:geo_groups/location_repository.dart';
 import 'package:geo_groups/my_groups_screen.dart';
 import 'package:geo_groups/profile_screen.dart';
 import 'package:geo_groups/supabase_bootstrap.dart';
@@ -109,7 +110,7 @@ class _SupabaseStartupAppState extends State<_SupabaseStartupApp> {
       );
     }
     if (_startup == SupabaseStartup.ready) {
-      return const MyApp();
+      return MyApp(locations: locationRepositoryFor(SupabaseStartup.ready));
     }
     return MaterialApp(
       home: Scaffold(
@@ -129,9 +130,14 @@ class _SupabaseStartupAppState extends State<_SupabaseStartupApp> {
 }
 
 class MyApp extends StatefulWidget {
-  const MyApp({super.key, this.inviteLinks});
+  const MyApp({
+    super.key,
+    this.inviteLinks,
+    this.locations = const LocalLocationRepository(),
+  });
 
   final InviteLinkSource? inviteLinks;
+  final LocationRepository locations;
 
   @override
   State<MyApp> createState() => _MyAppState();
@@ -234,6 +240,12 @@ class _MyAppState extends State<MyApp> {
         useMaterial3: true,
       ),
       home: const HomeScreen(),
+      builder: (context, child) {
+        return LocationRepositoryScope(
+          repository: widget.locations,
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
     );
   }
 }

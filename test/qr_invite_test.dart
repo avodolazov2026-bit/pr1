@@ -139,7 +139,7 @@ void main() {
   testWidgets('organizer of an active group sees the QR and can close it', (
     tester,
   ) async {
-    final endsAt = DateTime(2026, 11, 20, 18, 30);
+    final endsAt = DateTime.now().add(const Duration(hours: 2));
     final group = organizerGroup(
       id: 'active-qr',
       name: 'Тестовая встреча',
@@ -318,10 +318,8 @@ void main() {
         home: Builder(
           builder: (context) => Scaffold(
             body: FilledButton(
-              onPressed: () => showGroupInviteOptions(
-                context: context,
-                group: group,
-              ),
+              onPressed: () =>
+                  showGroupInviteOptions(context: context, group: group),
               child: const Text('Пригласить'),
             ),
           ),

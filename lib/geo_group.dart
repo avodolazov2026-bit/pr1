@@ -253,9 +253,7 @@ class GeoGroup {
   bool get isIndefinite => endsAt == null;
 
   bool get isUpcoming =>
-      endedAt == null &&
-      !endedByOrganizer &&
-      DateTime.now().isBefore(startsAt);
+      endedAt == null && !endedByOrganizer && DateTime.now().isBefore(startsAt);
 
   bool get isActive {
     final endsAt = this.endsAt;

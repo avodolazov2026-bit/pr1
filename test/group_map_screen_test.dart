@@ -9,6 +9,7 @@ import 'package:geo_groups/current_location_provider.dart';
 import 'package:geo_groups/geo_coordinate.dart';
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/group_map_screen.dart';
+import 'package:geo_groups/location_repository.dart';
 
 import 'fake_location_device.dart';
 
@@ -990,6 +991,110 @@ void main() {
     expect(find.byType(FlutterMap), findsNothing);
     expect(find.text('Тестовая точка на карте'), findsNothing);
   });
+
+  testWidgets('a loaded member location appears as that member marker', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    final active = GeoGroup(
+      id: 'map-loaded',
+      name: 'Прогулка',
+      createdAt: now.subtract(const Duration(days: 1)),
+      startsAt: now.subtract(const Duration(hours: 1)),
+      endsAt: now.add(const Duration(hours: 2)),
+      members: [GroupMember(id: 'maria', name: 'Мария')],
+    );
+    final loaded = GroupMemberLocation(
+      memberId: 'maria',
+      coordinate: GeoCoordinate(latitude: 55.7558, longitude: 37.6173),
+      updatedAt: now,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GroupMapScreen(
+          locationProvider: _silentLocation,
+          locations: _MemoryLocations([loaded]),
+          group: active,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byTooltip('Мария'), findsOneWidget);
+    expect(find.byIcon(Icons.location_on), findsOneWidget);
+    expect(active.memberLocations, isEmpty);
+  });
+
+  testWidgets('a failed location load keeps the original markers', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    final active = GeoGroup(
+      id: 'map-load-failed',
+      name: 'Прогулка',
+      createdAt: now.subtract(const Duration(days: 1)),
+      startsAt: now.subtract(const Duration(hours: 1)),
+      endsAt: now.add(const Duration(hours: 2)),
+      members: [GroupMember(id: 'maria', name: 'Мария')],
+      memberLocations: [
+        GroupMemberLocation(
+          memberId: 'maria',
+          coordinate: GeoCoordinate(latitude: 55.7558, longitude: 37.6173),
+          updatedAt: now,
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GroupMapScreen(
+          locationProvider: _silentLocation,
+          locations: _MemoryLocations(
+            const [],
+            error: StateError('locations failed'),
+          ),
+          group: active,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(FlutterMap), findsOneWidget);
+    expect(find.byTooltip('Мария'), findsOneWidget);
+    expect(active.memberLocations, hasLength(1));
+  });
+
+  testWidgets('an active map loads locations once', (tester) async {
+    final now = DateTime.now();
+    final active = GeoGroup(
+      id: 'map-load-once',
+      name: 'Прогулка',
+      createdAt: now.subtract(const Duration(days: 1)),
+      startsAt: now.subtract(const Duration(hours: 1)),
+      endsAt: now.add(const Duration(hours: 2)),
+      members: [GroupMember(id: 'maria', name: 'Мария')],
+    );
+    final locations = _CountingLocations();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GroupMapScreen(
+          locationProvider: _silentLocation,
+          locations: locations,
+          group: active,
+        ),
+      ),
+    );
+
+    expect(locations.loads, 1);
+
+    await tester.pump();
+
+    expect(locations.loads, 1);
+  });
 }
 
 GeoGroup _twoActiveMembers(DateTime now) {
@@ -1103,6 +1208,46 @@ class _SilentLocation implements CurrentLocationProvider {
 }
 
 const _silentLocation = _SilentLocation();
+
+class _MemoryLocations implements LocationRepository {
+  _MemoryLocations(this.locations, {this.error});
+
+  final List<GroupMemberLocation> locations;
+  final Object? error;
+
+  @override
+  Future<List<GroupMemberLocation>> loadGroupLocations(String groupId) async {
+    final failure = error;
+    if (failure != null) {
+      throw failure;
+    }
+    return locations;
+  }
+
+  @override
+  Future<void> upsertMyLocation({
+    required String groupId,
+    required String userId,
+    required GeoCoordinate coordinate,
+  }) async {}
+}
+
+class _CountingLocations implements LocationRepository {
+  var loads = 0;
+
+  @override
+  Future<List<GroupMemberLocation>> loadGroupLocations(String groupId) async {
+    loads++;
+    return const [];
+  }
+
+  @override
+  Future<void> upsertMyLocation({
+    required String groupId,
+    required String userId,
+    required GeoCoordinate coordinate,
+  }) async {}
+}
 
 GeoGroup _locatedGroup({
   required String id,

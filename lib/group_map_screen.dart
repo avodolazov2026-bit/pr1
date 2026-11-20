@@ -5,17 +5,99 @@ import 'package:latlong2/latlong.dart';
 import 'package:geo_groups/current_location_provider.dart';
 import 'package:geo_groups/geo_coordinate.dart';
 import 'package:geo_groups/geo_group.dart';
+import 'package:geo_groups/location_repository.dart';
 import 'package:geo_groups/map_time_format.dart';
 
-class GroupMapScreen extends StatelessWidget {
-  const GroupMapScreen({super.key, required this.group, this.locationProvider});
+class GroupMapScreen extends StatefulWidget {
+  const GroupMapScreen({
+    super.key,
+    required this.group,
+    this.locationProvider,
+    this.locations,
+  });
 
   final GeoGroup group;
   final CurrentLocationProvider? locationProvider;
 
+  /// Если не задан, берётся репозиторий из [LocationRepositoryScope] или локальный.
+  final LocationRepository? locations;
+
+  @override
+  State<GroupMapScreen> createState() => _GroupMapScreenState();
+}
+
+class _GroupMapScreenState extends State<GroupMapScreen> {
+  late GeoGroup _group;
+  var _loadStarted = false;
+  var _loadGeneration = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _group = widget.group;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _startLoad();
+  }
+
+  @override
+  void didUpdateWidget(GroupMapScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final groupChanged = !identical(oldWidget.group, widget.group);
+    if (groupChanged) {
+      _group = widget.group;
+    }
+    final groupIdChanged = oldWidget.group.id != widget.group.id;
+    if ((groupChanged && groupIdChanged) ||
+        oldWidget.locations != widget.locations) {
+      _loadGeneration++;
+      _loadStarted = false;
+      _startLoad();
+    }
+  }
+
+  void _startLoad() {
+    if (_loadStarted || !widget.group.canUseMap) {
+      return;
+    }
+    _loadStarted = true;
+    final generation = _loadGeneration;
+    final repository =
+        widget.locations ??
+        LocationRepositoryScope.maybeOf(context) ??
+        const LocalLocationRepository();
+    _loadLocations(repository, generation);
+  }
+
+  Future<void> _loadLocations(
+    LocationRepository repository,
+    int generation,
+  ) async {
+    final List<GroupMemberLocation> loaded;
+    try {
+      loaded = await repository.loadGroupLocations(widget.group.id);
+    } catch (_) {
+      return;
+    }
+    if (!mounted || generation != _loadGeneration) {
+      return;
+    }
+    final next = _copyGroup(widget.group);
+    for (final location in loaded) {
+      if (next.members.any((member) => member.id == location.memberId)) {
+        next.updateMemberLocation(location);
+      }
+    }
+    setState(() => _group = next);
+  }
+
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final group = _group;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Карта группы')),
@@ -33,7 +115,7 @@ class GroupMapScreen extends StatelessWidget {
                 Expanded(
                   child: _MemberMap(
                     group: group,
-                    locationProvider: locationProvider,
+                    locationProvider: widget.locationProvider,
                   ),
                 ),
               ],
@@ -50,6 +132,23 @@ class GroupMapScreen extends StatelessWidget {
             ),
     );
   }
+}
+
+GeoGroup _copyGroup(GeoGroup source) {
+  final copy = GeoGroup(
+    id: source.id,
+    name: source.name,
+    createdAt: source.createdAt,
+    startsAt: source.startsAt,
+    endsAt: source.endsAt,
+    createdByUserId: source.createdByUserId,
+    qrInviteToken: source.qrInviteToken,
+    members: List<GroupMember>.of(source.members),
+    memberLocations: source.memberLocations,
+  );
+  copy.endedByOrganizer = source.endedByOrganizer;
+  copy.endedAt = source.endedAt;
+  return copy;
 }
 
 class _MemberMap extends StatefulWidget {
