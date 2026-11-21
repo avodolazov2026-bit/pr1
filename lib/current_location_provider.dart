@@ -30,6 +30,24 @@ abstract class LocationDevice {
   Future<LocationAccess> requestPermission();
 
   Future<GeoCoordinate> getCurrentPosition();
+
+  /// Поток позиций для переднего плана. Точность и время сохраняются.
+  Stream<LocationFix> watchPositions();
+}
+
+/// Одно измерение устройства, ещё не прошедшее фильтр отправки.
+class LocationFix {
+  LocationFix({
+    required this.latitude,
+    required this.longitude,
+    required this.accuracyMeters,
+    required this.capturedAt,
+  });
+
+  final double latitude;
+  final double longitude;
+  final double accuracyMeters;
+  final DateTime capturedAt;
 }
 
 class DeviceLocationProvider implements CurrentLocationProvider {
@@ -92,6 +110,23 @@ class GeolocatorLocationDevice implements LocationDevice {
     return GeoCoordinate(
       latitude: position.latitude,
       longitude: position.longitude,
+    );
+  }
+
+  @override
+  Stream<LocationFix> watchPositions() {
+    return Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 0,
+      ),
+    ).map(
+      (position) => LocationFix(
+        latitude: position.latitude,
+        longitude: position.longitude,
+        accuracyMeters: position.accuracy,
+        capturedAt: position.timestamp,
+      ),
     );
   }
 }

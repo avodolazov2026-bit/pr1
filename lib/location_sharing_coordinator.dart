@@ -33,6 +33,34 @@ class LocationSharingCoordinator {
     );
   }
 
+  /// Есть ли сейчас хотя бы одна группа, куда можно передать точку.
+  bool hasSharingTarget(DateTime moment) {
+    if (_disposed) {
+      return false;
+    }
+    final userId = _readUserId();
+    if (userId.isEmpty) {
+      return false;
+    }
+    return _readGroups().any((group) => isSharingTarget(group, userId, moment));
+  }
+
+  /// Когда расписание групп пользователя изменит набор целей.
+  DateTime? nextSharingBoundary(DateTime moment) {
+    if (_disposed) {
+      return null;
+    }
+    final userId = _readUserId();
+    if (userId.isEmpty) {
+      return null;
+    }
+    return sharingBoundaryAfter(
+      userId: userId,
+      groups: _readGroups(),
+      moment: moment,
+    );
+  }
+
   void dispose() {
     _disposed = true;
   }

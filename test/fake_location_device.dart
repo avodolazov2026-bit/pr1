@@ -69,4 +69,7 @@ class FakeLocationDevice implements LocationDevice {
     }
     return value;
   }
+
+  @override
+  Stream<LocationFix> watchPositions() => const Stream<LocationFix>.empty();
 }

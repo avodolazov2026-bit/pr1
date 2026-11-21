@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:geo_groups/app_link_handler.dart';
 import 'package:geo_groups/created_groups_screen.dart';
+import 'package:geo_groups/foreground_location_sharing.dart';
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/group_repository.dart';
 import 'package:geo_groups/invitations_screen.dart';
@@ -149,6 +150,7 @@ class _MyAppState extends State<MyApp> {
   StreamSubscription<Uri>? _linkSubscription;
   String? _openInvitePayload;
   late final LocationSharingCoordinator _locationSharing;
+  late final ForegroundLocationSharing _foregroundSharing;
 
   @override
   void initState() {
@@ -156,6 +158,10 @@ class _MyAppState extends State<MyApp> {
     _locationSharing = LocationSharingCoordinator(
       sharing: LocationSharingService(repository: widget.locations),
     );
+    _foregroundSharing = ForegroundLocationSharing(
+      coordinator: _locationSharing,
+    );
+    _foregroundSharing.start();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _startInviteLinks();
     });
@@ -163,6 +169,7 @@ class _MyAppState extends State<MyApp> {
 
   @override
   void dispose() {
+    _foregroundSharing.dispose();
     _locationSharing.dispose();
     _linkSubscription?.cancel();
     super.dispose();

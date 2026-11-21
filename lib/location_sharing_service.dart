@@ -35,7 +35,7 @@ class LocationSharingService {
   }) async {
     final targets = [
       for (final group in groups)
-        if (_isSharingTarget(group, userId, sample.capturedAt)) group,
+        if (isSharingTarget(group, userId, sample.capturedAt)) group,
     ];
     final targetIds = {for (final group in targets) group.id};
     _filters.removeWhere((groupId, _) => !targetIds.contains(groupId));
@@ -70,19 +70,46 @@ class LocationSharingService {
   }
 }
 
-/// Та же граница, что у [GeoGroup.canUseMap], но на момент точки.
+/// Та же граница, что у [GeoGroup.canUseMap], но на момент [moment].
 ///
-/// Геттер модели читает [DateTime.now], поэтому здесь используется время точки.
-bool _isSharingTarget(GeoGroup group, String userId, DateTime moment) {
+/// Геттер модели читает [DateTime.now], поэтому время передаётся явно.
+bool isSharingTarget(GeoGroup group, String userId, DateTime moment) {
+  if (!_isActiveMember(group, userId)) {
+    return false;
+  }
   final endsAt = group.endsAt;
-  final open =
-      group.endedAt == null &&
+  return group.endedAt == null &&
       !group.endedByOrganizer &&
       !moment.isBefore(group.startsAt) &&
       (endsAt == null || moment.isBefore(endsAt));
-  if (!open) {
-    return false;
+}
+
+/// Ближайший будущий край расписания групп, где пользователь ещё участник.
+DateTime? sharingBoundaryAfter({
+  required String userId,
+  required List<GeoGroup> groups,
+  required DateTime moment,
+}) {
+  DateTime? next;
+  for (final group in groups) {
+    if (!_isActiveMember(group, userId)) {
+      continue;
+    }
+    if (group.endedAt != null || group.endedByOrganizer) {
+      continue;
+    }
+    for (final edge in [group.startsAt, group.endsAt]) {
+      if (edge != null && edge.isAfter(moment)) {
+        if (next == null || edge.isBefore(next)) {
+          next = edge;
+        }
+      }
+    }
   }
+  return next;
+}
+
+bool _isActiveMember(GeoGroup group, String userId) {
   return group.members.any(
     (member) => member.id == userId && member.status == MembershipStatus.active,
   );

@@ -193,6 +193,27 @@ void main() {
       isTrue,
     );
   });
+
+  test('завершённая группа не даёт границу расписания', () {
+    final at = DateTime.utc(2026, 11, 21, 9);
+    final finished = _activeGroup(id: 'finished', at: at)
+      ..endedByOrganizer = true
+      ..endedAt = at.subtract(const Duration(minutes: 1));
+    final active = _activeGroup(id: 'active', at: at);
+
+    expect(
+      sharingBoundaryAfter(userId: userId, groups: [finished], moment: at),
+      isNull,
+    );
+    expect(
+      sharingBoundaryAfter(
+        userId: userId,
+        groups: [finished, active],
+        moment: at,
+      ),
+      active.endsAt,
+    );
+  });
 }
 
 LocationSample _sample(
