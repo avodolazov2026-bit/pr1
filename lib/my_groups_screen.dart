@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/group_card.dart';
+import 'package:geo_groups/group_period.dart';
 import 'package:geo_groups/group_screen.dart';
 
 class MyGroupsScreen extends StatefulWidget {
@@ -19,10 +20,19 @@ class MyGroupsScreen extends StatefulWidget {
 class _MyGroupsScreenState extends State<MyGroupsScreen>
     with WidgetsBindingObserver {
   Timer? _statusRefreshTimer;
+  GroupPeriod _period = GroupPeriod.week;
 
   DateTime _now() => widget.now?.call() ?? DateTime.now();
 
-  List<GeoGroup> _visibleGroups() => GroupsStore.instance.myGroups;
+  List<GeoGroup> _membership() => GroupsStore.instance.myGroups;
+
+  List<GeoGroup> _visibleGroups() {
+    final now = _now();
+    return [
+      for (final group in _membership())
+        if (groupStartsInPeriod(group.startsAt, _period, now)) group,
+    ];
+  }
 
   @override
   void initState() {
@@ -104,12 +114,13 @@ class _MyGroupsScreenState extends State<MyGroupsScreen>
 
   @override
   Widget build(BuildContext context) {
-    final membership = _visibleGroups();
-    final active = membership.where((group) => group.isActive).toList()
+    final membership = _membership();
+    final visible = _visibleGroups();
+    final active = visible.where((group) => group.isActive).toList()
       ..sort(compareActiveGroups);
-    final upcoming = membership.where((group) => group.isUpcoming).toList()
+    final upcoming = visible.where((group) => group.isUpcoming).toList()
       ..sort(compareUpcomingGroups);
-    final finished = membership.where((group) => group.isFinished).toList()
+    final finished = visible.where((group) => group.isFinished).toList()
       ..sort(compareFinishedGroups);
     final sections =
         <({String title, String? note, List<GeoGroup> groups, Color color})>[
@@ -132,35 +143,64 @@ class _MyGroupsScreenState extends State<MyGroupsScreen>
             color: finishedGroupAccent,
           ),
         ].where((section) => section.groups.isNotEmpty).toList();
+    final periodIsEmpty = membership.isNotEmpty && sections.isEmpty;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Мои группы')),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(24),
+        child: Column(
           children: [
-            for (final section in sections) ...[
-              _SectionHeader(
-                title: section.title,
-                count: section.groups.length,
-                color: section.color,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+              child: GroupPeriodSelector(
+                period: _period,
+                labels: myGroupsPeriodLabels,
+                onChanged: (period) {
+                  setState(() => _period = period);
+                  _scheduleStatusRefresh();
+                },
               ),
-              if (section.note != null) ...[
-                const SizedBox(height: 4),
-                Text(
-                  section.note!,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-              const SizedBox(height: 12),
-              for (final group in section.groups) ...[
-                GroupCard(group: group, onTap: () => _openGroup(group)),
-                const SizedBox(height: 12),
-              ],
-              const SizedBox(height: 12),
-            ],
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: membership.isEmpty
+                  ? const Center(child: Text('Групп пока нет'))
+                  : periodIsEmpty
+                  ? const Center(child: Text('В выбранном периоде групп нет'))
+                  : ListView(
+                      padding: const EdgeInsets.all(24),
+                      children: [
+                        for (final section in sections) ...[
+                          _SectionHeader(
+                            title: section.title,
+                            count: section.groups.length,
+                            color: section.color,
+                          ),
+                          if (section.note != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              section.note!,
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
+                            ),
+                          ],
+                          const SizedBox(height: 12),
+                          for (final group in section.groups) ...[
+                            GroupCard(
+                              group: group,
+                              onTap: () => _openGroup(group),
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+                          const SizedBox(height: 12),
+                        ],
+                      ],
+                    ),
+            ),
           ],
         ),
       ),

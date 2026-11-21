@@ -5,9 +5,44 @@ import 'package:geo_groups/created_groups_screen.dart';
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/group_invitation.dart';
 import 'package:geo_groups/group_map_screen.dart';
+import 'package:geo_groups/group_period.dart';
 import 'package:geo_groups/group_screen.dart';
 import 'package:geo_groups/my_groups_screen.dart';
 import 'package:geo_groups/qr_invite_screen.dart';
+
+DateTime _laterThisWeek(DateTime now) {
+  final end = groupPeriodBounds(GroupPeriod.week, now).end;
+  final soon = now.add(const Duration(minutes: 30));
+  if (soon.isBefore(end)) {
+    return soon;
+  }
+  final last = end.subtract(const Duration(minutes: 1));
+  if (last.isAfter(now)) {
+    return last;
+  }
+  return soon;
+}
+
+DateTime _earlierThisWeek(DateTime now) {
+  final start = groupPeriodBounds(GroupPeriod.week, now).start;
+  final earlier = now.subtract(const Duration(hours: 3));
+  if (!earlier.isBefore(start)) {
+    return earlier;
+  }
+  return start;
+}
+
+DateTime _endedAfter(DateTime startsAt, DateTime now) {
+  final preferred = now.subtract(const Duration(hours: 1));
+  if (preferred.isAfter(startsAt)) {
+    return preferred;
+  }
+  final soon = startsAt.add(const Duration(minutes: 1));
+  if (soon.isBefore(now)) {
+    return soon;
+  }
+  return now;
+}
 
 void main() {
   setUp(() {
@@ -356,15 +391,16 @@ void main() {
     indefinite.name = 'Секция бессрочная';
     final upcoming = buildGroup(
       id: 'section-upcoming',
-      startsAt: now.add(const Duration(days: 3)),
+      startsAt: _laterThisWeek(now),
       memberId: currentDemoUserId,
       role: MemberRole.participant,
     );
     upcoming.name = 'Секция запланированная';
+    final finishedStart = _earlierThisWeek(now);
     final finished = buildGroup(
       id: 'section-finished',
-      startsAt: now.subtract(const Duration(days: 2)),
-      endsAt: now.subtract(const Duration(hours: 5)),
+      startsAt: finishedStart,
+      endsAt: _endedAfter(finishedStart, now),
       memberId: currentDemoUserId,
       role: MemberRole.participant,
     );
@@ -614,10 +650,11 @@ void main() {
   ) async {
     currentDemoUserId = 'status-finished-user';
     final now = DateTime.now();
+    final finishedStart = _earlierThisWeek(now);
     final group = buildGroup(
       id: 'status-no-timer',
-      startsAt: now.subtract(const Duration(days: 2)),
-      endsAt: now.subtract(const Duration(hours: 2)),
+      startsAt: finishedStart,
+      endsAt: _endedAfter(finishedStart, now),
       memberId: currentDemoUserId,
       role: MemberRole.participant,
     );
@@ -774,11 +811,12 @@ void main() {
   ) async {
     currentDemoUserId = 'caption-finished-member';
     final now = DateTime.now();
+    final finishedStart = _earlierThisWeek(now);
     GroupsStore.instance.addGroup(
       buildGroup(
         id: 'caption-finished-only',
-        startsAt: now.subtract(const Duration(days: 2)),
-        endsAt: now.subtract(const Duration(hours: 2)),
+        startsAt: finishedStart,
+        endsAt: _endedAfter(finishedStart, now),
         memberId: currentDemoUserId,
         role: MemberRole.participant,
       ),
