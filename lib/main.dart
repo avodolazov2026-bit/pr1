@@ -20,6 +20,25 @@ import 'package:geo_groups/supabase_bootstrap.dart';
 
 final appNavigatorKey = GlobalKey<NavigatorState>();
 
+/// Основной фон светлой темы.
+const appBackgroundColor = Color(0xFFFAF7F0);
+
+final appLightTheme = ThemeData(
+  colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
+  useMaterial3: true,
+  scaffoldBackgroundColor: appBackgroundColor,
+  canvasColor: appBackgroundColor,
+  cardTheme: const CardThemeData(color: Colors.white),
+  bottomSheetTheme: const BottomSheetThemeData(
+    backgroundColor: appBackgroundColor,
+  ),
+  dialogTheme: const DialogThemeData(backgroundColor: appBackgroundColor),
+  inputDecorationTheme: const InputDecorationTheme(
+    filled: true,
+    fillColor: Colors.white,
+  ),
+);
+
 void main() {
   if (!supabaseConfigFromEnvironment().isConfigured) {
     runApp(const MyApp());
@@ -108,14 +127,16 @@ class _SupabaseStartupAppState extends State<_SupabaseStartupApp> {
   @override
   Widget build(BuildContext context) {
     if (_connecting) {
-      return const MaterialApp(
-        home: Scaffold(body: Center(child: CircularProgressIndicator())),
+      return MaterialApp(
+        theme: appLightTheme,
+        home: const Scaffold(body: Center(child: CircularProgressIndicator())),
       );
     }
     if (_startup == SupabaseStartup.ready) {
       return MyApp(locations: locationRepositoryFor(SupabaseStartup.ready));
     }
     return MaterialApp(
+      theme: appLightTheme,
       home: Scaffold(
         body: Center(
           child: Column(
@@ -249,10 +270,7 @@ class _MyAppState extends State<MyApp> {
     return MaterialApp(
       navigatorKey: appNavigatorKey,
       title: 'Geo Groups',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
-        useMaterial3: true,
-      ),
+      theme: appLightTheme,
       home: const HomeScreen(),
       builder: (context, child) {
         return LocationRepositoryScope(
