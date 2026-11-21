@@ -356,56 +356,55 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
     return result;
   }
 
-  Future<void> _pickStartDate() async {
+  Future<void> _pickStart() async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final picked = await showDatePicker(
+    final pickedDate = await showDatePicker(
       context: context,
       initialDate: _startDate.isBefore(today) ? today : _startDate,
       firstDate: today,
       lastDate: DateTime(now.year + 2, now.month, now.day),
     );
-    if (picked == null) {
+    if (pickedDate == null || !mounted) {
       return;
     }
-    setState(() => _startDate = picked);
-  }
-
-  Future<void> _pickStartTime() async {
-    final picked = await showTimePicker(
+    final pickedTime = await showTimePicker(
       context: context,
       initialTime: _startTime,
     );
-    if (picked == null) {
+    if (pickedTime == null || !mounted) {
       return;
     }
-    setState(() => _startTime = picked);
+    setState(() {
+      _startDate = pickedDate;
+      _startTime = pickedTime;
+    });
   }
 
-  Future<void> _pickEndDate() async {
+  Future<void> _pickEnd() async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final picked = await showDatePicker(
+    final currentDate = _endDate ?? _startDate;
+    final pickedDate = await showDatePicker(
       context: context,
-      initialDate: _endDate ?? _startDate,
+      initialDate: currentDate.isBefore(today) ? today : currentDate,
       firstDate: today,
       lastDate: DateTime(now.year + 2, now.month, now.day),
     );
-    if (picked == null) {
+    if (pickedDate == null || !mounted) {
       return;
     }
-    setState(() => _endDate = picked);
-  }
-
-  Future<void> _pickEndTime() async {
-    final picked = await showTimePicker(
+    final pickedTime = await showTimePicker(
       context: context,
       initialTime: _endTime ?? _startTime,
     );
-    if (picked == null) {
+    if (pickedTime == null || !mounted) {
       return;
     }
-    setState(() => _endTime = picked);
+    setState(() {
+      _endDate = pickedDate;
+      _endTime = pickedTime;
+    });
   }
 
   DateTime get _startsAt => DateTime(
@@ -486,16 +485,9 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
             ),
             const SizedBox(height: 16),
             ScheduleOutlinedButton(
-              onPressed: _pickStartDate,
+              onPressed: _pickStart,
               icon: Icons.event_outlined,
-              label: 'Дата начала: ${formatGroupDate(_startDate)}',
-              invalid: startInvalid,
-            ),
-            const SizedBox(height: 12),
-            ScheduleOutlinedButton(
-              onPressed: _pickStartTime,
-              icon: Icons.schedule,
-              label: 'Время начала: ${formatGroupTime(_startTime)}',
+              label: 'Начало: ${formatGroupDateTime(_startsAt)}',
               invalid: startInvalid,
             ),
             if (issue?.field == GroupScheduleField.start) ...[
@@ -527,20 +519,11 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
             ),
             const SizedBox(height: 4),
             ScheduleOutlinedButton(
-              onPressed: _indefinite ? null : _pickEndDate,
-              icon: Icons.calendar_today,
-              label: _endDate == null
-                  ? 'Дата завершения'
-                  : 'Дата завершения: ${formatGroupDate(_endDate!)}',
-              invalid: endInvalid,
-            ),
-            const SizedBox(height: 12),
-            ScheduleOutlinedButton(
-              onPressed: _indefinite ? null : _pickEndTime,
-              icon: Icons.schedule,
-              label: _endTime == null
-                  ? 'Время завершения'
-                  : 'Время завершения: ${formatGroupTime(_endTime!)}',
+              onPressed: _indefinite ? null : _pickEnd,
+              icon: Icons.event_outlined,
+              label: endsAt == null
+                  ? 'Окончание группы'
+                  : 'Окончание: ${formatGroupDateTime(endsAt)}',
               invalid: endInvalid,
             ),
             if (issue?.field == GroupScheduleField.end) ...[
