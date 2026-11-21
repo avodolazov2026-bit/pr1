@@ -3,13 +3,18 @@ import 'package:flutter/material.dart';
 import 'package:geo_groups/edit_group_screen.dart';
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/group_map_screen.dart';
+import 'package:geo_groups/map_time_format.dart';
+import 'package:geo_groups/member_distance.dart';
 import 'package:geo_groups/user_profile.dart';
 
 class GroupScreen extends StatefulWidget {
-  const GroupScreen({super.key, required this.group, this.onChanged});
+  const GroupScreen({super.key, required this.group, this.onChanged, this.now});
 
   final GeoGroup group;
   final VoidCallback? onChanged;
+
+  /// Фиксированный момент для подписей «обновлено …». В приложении это текущее время.
+  final DateTime? now;
 
   @override
   State<GroupScreen> createState() => _GroupScreenState();
@@ -116,10 +121,7 @@ class _GroupScreenState extends State<GroupScreen> {
         group.isActive &&
         group.currentUserIsActiveMember &&
         !group.currentUserIsActiveOrganizer;
-    final participants = group.members.where(
-      (member) =>
-          member.status == MembershipStatus.active && !member.isCurrentUser,
-    );
+    final participants = _listedMembers(group);
     final invited = group.members
         .where((member) => member.status == MembershipStatus.invited)
         .toList();
@@ -167,17 +169,15 @@ class _GroupScreenState extends State<GroupScreen> {
             ],
             const SizedBox(height: 8),
             for (final member in participants)
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: ProfileAvatar(
-                  avatarId: member.displayAvatarId,
-                  displayName: member.name,
-                  radius: 20,
-                ),
-                title: Text(member.name),
-                trailing: group.canUseMap && member.distanceMeters != null
-                    ? Text('${member.distanceMeters} м')
-                    : null,
+              _MemberTile(
+                member: member,
+                lines: group.canUseMap
+                    ? _memberLocationLines(
+                        group,
+                        member,
+                        widget.now ?? DateTime.now(),
+                      )
+                    : const [],
               ),
             if (invited.isNotEmpty) ...[
               const SizedBox(height: 24),
@@ -249,6 +249,71 @@ class _GroupScreenState extends State<GroupScreen> {
               ),
             )
           : null,
+    );
+  }
+}
+
+/// В списке остаются другие активные участники, как и раньше.
+Iterable<GroupMember> _listedMembers(GeoGroup group) {
+  return group.members.where(
+    (member) =>
+        member.status == MembershipStatus.active && !member.isCurrentUser,
+  );
+}
+
+List<String> _memberLocationLines(
+  GeoGroup group,
+  GroupMember member,
+  DateTime now,
+) {
+  final location = group.memberLocation(member.id);
+  final own = group.memberLocation(currentDemoUserId);
+  final meters = location == null || own == null
+      ? null
+      : geodesicDistanceMeters(
+          own.coordinate.latitude,
+          own.coordinate.longitude,
+          location.coordinate.latitude,
+          location.coordinate.longitude,
+        );
+  final distance = meters == null ? null : formatDistanceMeters(meters);
+  return [
+    distance ?? 'Нет данных о расстоянии',
+    if (location != null) formatLocationUpdated(location.updatedAt, now: now),
+  ];
+}
+
+class _MemberTile extends StatelessWidget {
+  const _MemberTile({required this.member, required this.lines});
+
+  final GroupMember member;
+  final List<String> lines;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final color = Theme.of(context).colorScheme.onSurfaceVariant;
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      isThreeLine: lines.length > 1,
+      leading: ProfileAvatar(
+        avatarId: member.displayAvatarId,
+        displayName: member.name,
+        radius: 20,
+      ),
+      title: Text(member.name),
+      subtitle: lines.isEmpty
+          ? null
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final line in lines)
+                  Text(
+                    line,
+                    style: textTheme.bodyMedium?.copyWith(color: color),
+                  ),
+              ],
+            ),
     );
   }
 }

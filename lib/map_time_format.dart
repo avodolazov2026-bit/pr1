@@ -1,8 +1,13 @@
+/// Подпись времени позиции для списка участников.
+String formatLocationUpdated(DateTime updatedAt, {DateTime? now}) {
+  return 'Обновлено ${formatUpdatedAgo(updatedAt, now: now)}';
+}
+
 /// Короткое русское описание того, как давно обновлена позиция.
 String formatUpdatedAgo(DateTime updatedAt, {DateTime? now}) {
   final current = now ?? DateTime.now();
   final elapsed = current.difference(updatedAt);
-  if (elapsed < const Duration(minutes: 1)) {
+  if (elapsed.isNegative || elapsed < const Duration(minutes: 1)) {
     return 'только что';
   }
   if (elapsed < const Duration(hours: 1)) {

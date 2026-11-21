@@ -45,4 +45,35 @@ void main() {
       '5 дн назад',
     );
   });
+
+  test('a future update is treated as just now', () {
+    expect(
+      formatUpdatedAgo(now.add(const Duration(minutes: 5)), now: now),
+      'только что',
+    );
+    expect(
+      formatLocationUpdated(now.add(const Duration(seconds: 10)), now: now),
+      'Обновлено только что',
+    );
+    expect(
+      formatLocationUpdated(now.subtract(const Duration(minutes: 1)), now: now),
+      'Обновлено 1 мин назад',
+    );
+    expect(
+      formatLocationUpdated(now.subtract(const Duration(minutes: 5)), now: now),
+      'Обновлено 5 мин назад',
+    );
+    expect(
+      formatLocationUpdated(now.subtract(const Duration(hours: 1)), now: now),
+      'Обновлено 1 ч назад',
+    );
+    expect(
+      formatLocationUpdated(now.subtract(const Duration(hours: 2)), now: now),
+      'Обновлено 2 ч назад',
+    );
+    expect(
+      formatLocationUpdated(now.subtract(const Duration(days: 3)), now: now),
+      'Обновлено 3 дн назад',
+    );
+  });
 }
