@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:geo_groups/geo_coordinate.dart';
 import 'package:geo_groups/supabase_bootstrap.dart';
@@ -6,6 +8,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// Чтение и сохранение текущих позиций участников одной группы.
 abstract class LocationRepository {
   Future<List<GroupMemberLocation>> loadGroupLocations(String groupId);
+
+  /// Новые и изменённые позиции одной группы. Одно событие — один участник.
+  Stream<GroupMemberLocation> watchGroupLocations(String groupId);
 
   Future<void> upsertMyLocation({
     required String groupId,
@@ -23,6 +28,11 @@ class LocalLocationRepository implements LocationRepository {
   }
 
   @override
+  Stream<GroupMemberLocation> watchGroupLocations(String groupId) {
+    return const Stream.empty();
+  }
+
+  @override
   Future<void> upsertMyLocation({
     required String groupId,
     required String userId,
@@ -36,6 +46,8 @@ typedef LocationRows = Future<List<Map<String, dynamic>>> Function(
 
 typedef LocationUpsert = Future<void> Function(Map<String, dynamic> row);
 
+typedef LocationChanges = Stream<Map<String, dynamic>> Function(String groupId);
+
 LocationRepository locationRepositoryFor(SupabaseStartup startup) {
   if (startup == SupabaseStartup.ready) {
     return SupabaseLocationRepository();
@@ -45,16 +57,31 @@ LocationRepository locationRepositoryFor(SupabaseStartup startup) {
 
 /// Позиции группы из public.locations. RLS остаётся на стороне базы.
 class SupabaseLocationRepository implements LocationRepository {
-  SupabaseLocationRepository({LocationRows? locations, LocationUpsert? upsert})
-    : _locations = locations ?? _locationsFromSupabase,
-      _upsert = upsert ?? _upsertLocation;
+  SupabaseLocationRepository({
+    LocationRows? locations,
+    LocationUpsert? upsert,
+    LocationChanges? changes,
+  }) : _locations = locations ?? _locationsFromSupabase,
+       _upsert = upsert ?? _upsertLocation,
+       _changes = changes ?? _changesFromSupabase;
 
   final LocationRows _locations;
   final LocationUpsert _upsert;
+  final LocationChanges _changes;
 
   @override
   Future<List<GroupMemberLocation>> loadGroupLocations(String groupId) async {
     return mapLocationRows(await _locations(groupId));
+  }
+
+  @override
+  Stream<GroupMemberLocation> watchGroupLocations(String groupId) async* {
+    await for (final row in _changes(groupId)) {
+      final location = locationFromRow(row);
+      if (location != null) {
+        yield location;
+      }
+    }
   }
 
   @override
@@ -133,6 +160,69 @@ Future<void> _upsertLocation(Map<String, dynamic> row) {
   return Supabase.instance.client
       .from('locations')
       .upsert(row, onConflict: 'group_id,user_id', defaultToNull: false);
+}
+
+/// INSERT и UPDATE public.locations только для одной группы.
+Stream<Map<String, dynamic>> _changesFromSupabase(String groupId) {
+  final client = Supabase.instance.client;
+  late final RealtimeChannel channel;
+  final controller = StreamController<Map<String, dynamic>>(
+    onCancel: () {
+      client.removeChannel(channel).ignore();
+    },
+  );
+  channel = client.channel(
+    'locations:$groupId:${identityHashCode(controller)}',
+  );
+  final filter = PostgresChangeFilter(
+    type: PostgresChangeFilterType.eq,
+    column: 'group_id',
+    value: groupId,
+  );
+
+  for (final event in [
+    PostgresChangeEvent.insert,
+    PostgresChangeEvent.update,
+  ]) {
+    channel.onPostgresChanges(
+      event: event,
+      schema: 'public',
+      table: 'locations',
+      filter: filter,
+      callback: (payload) => _addLocationRow(controller, payload.newRecord),
+    );
+  }
+  channel.subscribe((status, error) {
+    if (status != RealtimeSubscribeStatus.channelError &&
+        status != RealtimeSubscribeStatus.timedOut) {
+      return;
+    }
+    _addLocationError(
+      controller,
+      error ?? StateError('locations realtime ${status.name}'),
+    );
+  });
+  return controller.stream;
+}
+
+void _addLocationRow(
+  StreamController<Map<String, dynamic>> controller,
+  Map<String, dynamic> row,
+) {
+  if (controller.isClosed || !controller.hasListener) {
+    return;
+  }
+  controller.add(row);
+}
+
+void _addLocationError(
+  StreamController<Map<String, dynamic>> controller,
+  Object error,
+) {
+  if (controller.isClosed || !controller.hasListener) {
+    return;
+  }
+  controller.addError(error);
 }
 
 List<Map<String, dynamic>> _rowMaps(Object? rows) {

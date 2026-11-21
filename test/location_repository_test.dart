@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:geo_groups/geo_coordinate.dart';
@@ -115,5 +117,42 @@ void main() {
     expect(locations.single.coordinate.latitude, 1);
     expect(locations.single.coordinate.longitude, 2);
     expect(locations.single.updatedAt, DateTime.parse('2026-11-20T15:00:00Z'));
+  });
+
+  test('watch parses a location row and forwards a stream error', () async {
+    final rows = StreamController<Map<String, dynamic>>();
+    final repository = SupabaseLocationRepository(
+      locations: (_) async => const [],
+      upsert: (_) async {},
+      changes: (_) => rows.stream,
+    );
+    final received = <GroupMemberLocation>[];
+    final errors = <Object>[];
+    final subscription = repository
+        .watchGroupLocations('group-1')
+        .listen(received.add, onError: errors.add);
+
+    rows.add({
+      'user_id': '',
+      'latitude': 1,
+      'longitude': 2,
+      'updated_at': '2026-11-20T15:00:00Z',
+    });
+    rows.add({
+      'user_id': 'user-2',
+      'latitude': 55.75,
+      'longitude': 37.62,
+      'updated_at': '2026-11-20T15:00:00Z',
+    });
+    rows.addError(StateError('realtime'));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(received, hasLength(1));
+    expect(received.single.memberId, 'user-2');
+    expect(received.single.coordinate.latitude, 55.75);
+    expect(errors, hasLength(1));
+    expect(errors.single, isA<StateError>());
+    await subscription.cancel();
+    await rows.close();
   });
 }

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import 'dart:async';
+
 import 'package:geo_groups/current_location_provider.dart';
 import 'package:geo_groups/geo_coordinate.dart';
 import 'package:geo_groups/geo_group.dart';
@@ -28,8 +30,10 @@ class GroupMapScreen extends StatefulWidget {
 
 class _GroupMapScreenState extends State<GroupMapScreen> {
   late GeoGroup _group;
-  var _loadStarted = false;
-  var _loadGeneration = 0;
+  StreamSubscription<GroupMemberLocation>? _locations;
+  GeoGroup? _watchedGroup;
+  LocationRepository? _watchedRepository;
+  var _generation = 0;
 
   @override
   void initState() {
@@ -40,35 +44,65 @@ class _GroupMapScreenState extends State<GroupMapScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _startLoad();
+    _watchLocations();
   }
 
   @override
   void didUpdateWidget(GroupMapScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final groupChanged = !identical(oldWidget.group, widget.group);
-    if (groupChanged) {
+    if (!identical(oldWidget.group, widget.group)) {
       _group = widget.group;
     }
-    final groupIdChanged = oldWidget.group.id != widget.group.id;
-    if ((groupChanged && groupIdChanged) ||
+    if (!identical(oldWidget.group, widget.group) ||
         oldWidget.locations != widget.locations) {
-      _loadGeneration++;
-      _loadStarted = false;
-      _startLoad();
+      _watchLocations(force: true);
     }
   }
 
-  void _startLoad() {
-    if (_loadStarted || !widget.group.canUseMap) {
+  @override
+  void dispose() {
+    _generation++;
+    _stopWatching();
+    super.dispose();
+  }
+
+  LocationRepository _repository() {
+    final explicit = widget.locations;
+    if (explicit != null) {
+      return explicit;
+    }
+    return LocationRepositoryScope.maybeOf(context) ??
+        const LocalLocationRepository();
+  }
+
+  /// Подписка и снимок запускаются только для карты, которой можно пользоваться.
+  void _watchLocations({bool force = false}) {
+    final repository = _repository();
+    if (!widget.group.canUseMap) {
+      _generation++;
+      _stopWatching();
+      _watchedGroup = null;
+      _watchedRepository = null;
       return;
     }
-    _loadStarted = true;
-    final generation = _loadGeneration;
-    final repository =
-        widget.locations ??
-        LocationRepositoryScope.maybeOf(context) ??
-        const LocalLocationRepository();
+    final sameSource =
+        identical(_watchedGroup, widget.group) &&
+        identical(_watchedRepository, repository);
+    if (!force && sameSource && _locations != null) {
+      return;
+    }
+    _generation++;
+    final generation = _generation;
+    _stopWatching();
+    _watchedGroup = widget.group;
+    _watchedRepository = repository;
+    _group = widget.group;
+    _locations = repository
+        .watchGroupLocations(widget.group.id)
+        .listen(
+          (location) => _onLocation(location, generation),
+          onError: (Object _, StackTrace _) {},
+        );
     _loadLocations(repository, generation);
   }
 
@@ -82,16 +116,60 @@ class _GroupMapScreenState extends State<GroupMapScreen> {
     } catch (_) {
       return;
     }
-    if (!mounted || generation != _loadGeneration) {
+    if (!mounted || generation != _generation) {
       return;
     }
-    final next = _copyGroup(widget.group);
+    _applyLoaded(loaded);
+  }
+
+  void _onLocation(GroupMemberLocation location, int generation) {
+    if (!mounted || generation != _generation) {
+      return;
+    }
+    if (!_belongsToGroup(location)) {
+      return;
+    }
+    if (!_isNewer(location)) {
+      return;
+    }
+    final next = _copyGroup(_group);
+    next.updateMemberLocation(location);
+    setState(() => _group = next);
+  }
+
+  /// Снимок не затирает точку, которая уже новее. Равные времена не трогает.
+  void _applyLoaded(List<GroupMemberLocation> loaded) {
+    final next = _copyGroup(_group);
+    var changed = false;
     for (final location in loaded) {
-      if (next.members.any((member) => member.id == location.memberId)) {
-        next.updateMemberLocation(location);
+      if (!next.members.any((member) => member.id == location.memberId)) {
+        continue;
       }
+      final current = next.memberLocation(location.memberId);
+      if (current != null && !location.updatedAt.isAfter(current.updatedAt)) {
+        continue;
+      }
+      next.updateMemberLocation(location);
+      changed = true;
+    }
+    if (!changed || !mounted) {
+      return;
     }
     setState(() => _group = next);
+  }
+
+  bool _belongsToGroup(GroupMemberLocation location) {
+    return _group.members.any((member) => member.id == location.memberId);
+  }
+
+  bool _isNewer(GroupMemberLocation location) {
+    final current = _group.memberLocation(location.memberId);
+    return current == null || location.updatedAt.isAfter(current.updatedAt);
+  }
+
+  void _stopWatching() {
+    _locations?.cancel();
+    _locations = null;
   }
 
   @override

@@ -1095,6 +1095,250 @@ void main() {
 
     expect(locations.loads, 1);
   });
+
+  testWidgets('a realtime location appears on the open map', (tester) async {
+    final now = DateTime.now();
+    final locations = _LiveLocations();
+    final active = _locatedGroup(
+      id: 'map-live',
+      now: now,
+      members: [GroupMember(id: 'maria', name: 'Мария')],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GroupMapScreen(
+          locationProvider: _silentLocation,
+          locations: locations,
+          group: active,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    locations.updates.add(
+      GroupMemberLocation(
+        memberId: 'maria',
+        coordinate: GeoCoordinate(latitude: 55.76, longitude: 37.62),
+        updatedAt: now,
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byTooltip('Мария'), findsOneWidget);
+    expect(
+      _markerPoint(tester, 'Позиция участника: Мария'),
+      const LatLng(55.76, 37.62),
+    );
+    expect(active.memberLocations, isEmpty);
+  });
+
+  testWidgets('a newer realtime location replaces the marker', (tester) async {
+    final now = DateTime.now();
+    final locations = _LiveLocations(
+      loaded: [
+        GroupMemberLocation(
+          memberId: 'maria',
+          coordinate: GeoCoordinate(latitude: 55.75, longitude: 37.61),
+          updatedAt: now.subtract(const Duration(minutes: 5)),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GroupMapScreen(
+          locationProvider: _silentLocation,
+          locations: locations,
+          group: _locatedGroup(
+            id: 'map-move',
+            now: now,
+            members: [GroupMember(id: 'maria', name: 'Мария')],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    locations.updates.add(
+      GroupMemberLocation(
+        memberId: 'maria',
+        coordinate: GeoCoordinate(latitude: 55.8, longitude: 37.7),
+        updatedAt: now,
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      _markerPoint(tester, 'Позиция участника: Мария'),
+      const LatLng(55.8, 37.7),
+    );
+  });
+
+  testWidgets('a realtime location of an unknown member is ignored', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    final locations = _LiveLocations();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GroupMapScreen(
+          locationProvider: _silentLocation,
+          locations: locations,
+          group: _locatedGroup(
+            id: 'map-unknown',
+            now: now,
+            members: [GroupMember(id: 'maria', name: 'Мария')],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    locations.updates.add(
+      GroupMemberLocation(
+        memberId: 'stranger',
+        coordinate: GeoCoordinate(latitude: 55.8, longitude: 37.7),
+        updatedAt: now,
+      ),
+    );
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byTooltip('Мария'), findsNothing);
+    expect(find.byIcon(Icons.location_on), findsNothing);
+  });
+
+  testWidgets('a stale snapshot does not replace a newer realtime location', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    final gate = Completer<List<GroupMemberLocation>>();
+    final locations = _LiveLocations(loadGate: gate);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GroupMapScreen(
+          locationProvider: _silentLocation,
+          locations: locations,
+          group: _locatedGroup(
+            id: 'map-race',
+            now: now,
+            members: [GroupMember(id: 'maria', name: 'Мария')],
+          ),
+        ),
+      ),
+    );
+
+    locations.updates.add(
+      GroupMemberLocation(
+        memberId: 'maria',
+        coordinate: GeoCoordinate(latitude: 55.81, longitude: 37.71),
+        updatedAt: now,
+      ),
+    );
+    await tester.pump();
+    gate.complete([
+      GroupMemberLocation(
+        memberId: 'maria',
+        coordinate: GeoCoordinate(latitude: 55.7, longitude: 37.6),
+        updatedAt: now.subtract(const Duration(minutes: 10)),
+      ),
+    ]);
+    await tester.pump();
+
+    expect(
+      _markerPoint(tester, 'Позиция участника: Мария'),
+      const LatLng(55.81, 37.71),
+    );
+  });
+
+  testWidgets('a late event from the previous map source is ignored', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    final first = _LiveLocations();
+    final second = _LiveLocations();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GroupMapScreen(
+          locationProvider: _silentLocation,
+          locations: first,
+          group: _locatedGroup(
+            id: 'map-first',
+            now: now,
+            members: [GroupMember(id: 'maria', name: 'Мария')],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GroupMapScreen(
+          locationProvider: _silentLocation,
+          locations: second,
+          group: _locatedGroup(
+            id: 'map-second',
+            now: now,
+            members: [GroupMember(id: 'alexey', name: 'Алексей')],
+          ),
+        ),
+      ),
+    );
+
+    first.updates.add(
+      GroupMemberLocation(
+        memberId: 'maria',
+        coordinate: GeoCoordinate(latitude: 55.76, longitude: 37.62),
+        updatedAt: now,
+      ),
+    );
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byTooltip('Мария'), findsNothing);
+    expect(find.byIcon(Icons.location_on), findsNothing);
+  });
+
+  testWidgets('a realtime error keeps the current marker', (tester) async {
+    final now = DateTime.now();
+    final locations = _LiveLocations();
+    final active = _locatedGroup(
+      id: 'map-error',
+      now: now,
+      members: [GroupMember(id: 'maria', name: 'Мария')],
+      locations: [
+        GroupMemberLocation(
+          memberId: 'maria',
+          coordinate: GeoCoordinate(latitude: 55.75, longitude: 37.61),
+          updatedAt: now,
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GroupMapScreen(
+          locationProvider: _silentLocation,
+          locations: locations,
+          group: active,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    locations.updates.addError(StateError('realtime failed'));
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byTooltip('Мария'), findsOneWidget);
+    expect(
+      _markerPoint(tester, 'Позиция участника: Мария'),
+      const LatLng(55.75, 37.61),
+    );
+  });
 }
 
 GeoGroup _twoActiveMembers(DateTime now) {
@@ -1225,6 +1469,11 @@ class _MemoryLocations implements LocationRepository {
   }
 
   @override
+  Stream<GroupMemberLocation> watchGroupLocations(String groupId) {
+    return const Stream.empty();
+  }
+
+  @override
   Future<void> upsertMyLocation({
     required String groupId,
     required String userId,
@@ -1239,6 +1488,40 @@ class _CountingLocations implements LocationRepository {
   Future<List<GroupMemberLocation>> loadGroupLocations(String groupId) async {
     loads++;
     return const [];
+  }
+
+  @override
+  Stream<GroupMemberLocation> watchGroupLocations(String groupId) {
+    return const Stream.empty();
+  }
+
+  @override
+  Future<void> upsertMyLocation({
+    required String groupId,
+    required String userId,
+    required GeoCoordinate coordinate,
+  }) async {}
+}
+
+class _LiveLocations implements LocationRepository {
+  _LiveLocations({this.loaded = const [], this.loadGate});
+
+  final List<GroupMemberLocation> loaded;
+  final Completer<List<GroupMemberLocation>>? loadGate;
+  final updates = StreamController<GroupMemberLocation>.broadcast(sync: true);
+
+  @override
+  Future<List<GroupMemberLocation>> loadGroupLocations(String groupId) {
+    final gate = loadGate;
+    if (gate != null) {
+      return gate.future;
+    }
+    return Future<List<GroupMemberLocation>>.value(loaded);
+  }
+
+  @override
+  Stream<GroupMemberLocation> watchGroupLocations(String groupId) {
+    return updates.stream;
   }
 
   @override

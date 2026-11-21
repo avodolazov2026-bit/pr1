@@ -286,6 +286,11 @@ class _JournalRepository implements LocationRepository {
   }
 
   @override
+  Stream<GroupMemberLocation> watchGroupLocations(String groupId) {
+    return const Stream.empty();
+  }
+
+  @override
   Future<void> upsertMyLocation({
     required String groupId,
     required String userId,
