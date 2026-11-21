@@ -11,6 +11,8 @@ import 'package:geo_groups/group_repository.dart';
 import 'package:geo_groups/invitations_screen.dart';
 import 'package:geo_groups/join_group_route.dart';
 import 'package:geo_groups/location_repository.dart';
+import 'package:geo_groups/location_sharing_coordinator.dart';
+import 'package:geo_groups/location_sharing_service.dart';
 import 'package:geo_groups/my_groups_screen.dart';
 import 'package:geo_groups/profile_screen.dart';
 import 'package:geo_groups/supabase_bootstrap.dart';
@@ -146,10 +148,14 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   StreamSubscription<Uri>? _linkSubscription;
   String? _openInvitePayload;
+  late final LocationSharingCoordinator _locationSharing;
 
   @override
   void initState() {
     super.initState();
+    _locationSharing = LocationSharingCoordinator(
+      sharing: LocationSharingService(repository: widget.locations),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _startInviteLinks();
     });
@@ -157,6 +163,7 @@ class _MyAppState extends State<MyApp> {
 
   @override
   void dispose() {
+    _locationSharing.dispose();
     _linkSubscription?.cancel();
     super.dispose();
   }
