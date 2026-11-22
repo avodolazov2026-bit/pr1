@@ -46,5 +46,12 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Release signing secrets. The example file stays in the repo.
+/android/key.properties
+
+# Local Supabase dart-defines. The example file stays in the repo.
+/dart_defines.json
+/dart_defines.local.json
+
 # Widget Preview related
 .widget_preview/

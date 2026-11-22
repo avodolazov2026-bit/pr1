@@ -1,0 +1,8 @@
+# Скопируйте этот файл в android/key.properties и подставьте свои значения.
+# android/key.properties в репозиторий не входит.
+# storeFile — путь к keystore относительно каталога android/app.
+# Сам keystore создайте отдельно командой keytool и тоже не коммитьте.
+storePassword=YOUR_STORE_PASSWORD
+keyPassword=YOUR_KEY_PASSWORD
+keyAlias=upload
+storeFile=upload-keystore.jks
