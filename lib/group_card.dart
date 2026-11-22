@@ -39,137 +39,130 @@ class GroupCard extends StatelessWidget {
       opacity: group.isFinished ? 0.55 : 1,
       child: Card(
         clipBehavior: Clip.antiAlias,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        child: Stack(
           children: [
-            InkWell(
-              onTap: onTap,
-              child: IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: groupStatusAccent(group),
-                        borderRadius: const BorderRadius.horizontal(
-                          left: Radius.circular(12),
-                        ),
-                      ),
-                      child: const SizedBox(width: 4),
-                    ),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: groupStatusAccent(group),
+                  borderRadius: const BorderRadius.horizontal(
+                    left: Radius.circular(12),
+                  ),
+                ),
+                child: const SizedBox(width: 4),
+              ),
+            ),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                InkWell(
+                  onTap: onTap,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 16, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    group.name,
-                                    style: textTheme.titleMedium,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                _StatusBadge(group: group),
-                              ],
+                            Expanded(
+                              child: Text(
+                                group.name,
+                                style: textTheme.titleMedium,
+                              ),
                             ),
-                            const SizedBox(height: 8),
-                            Text(
-                              group.scheduleSummary,
-                              style: textTheme.bodyLarge,
+                            const SizedBox(width: 8),
+                            _StatusBadge(group: group),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(group.scheduleSummary, style: textTheme.bodyLarge),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Icon(
+                              participating ? Icons.check_circle : Icons.logout,
+                              size: 18,
+                              color: participating
+                                  ? colorScheme.primary
+                                  : colorScheme.onSurfaceVariant,
                             ),
-                            const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                Icon(
-                                  participating
-                                      ? Icons.check_circle
-                                      : Icons.logout,
-                                  size: 18,
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                participating ? 'Участвую' : 'Покинул группу',
+                                overflow: TextOverflow.ellipsis,
+                                style: textTheme.bodyMedium?.copyWith(
                                   color: participating
                                       ? colorScheme.primary
                                       : colorScheme.onSurfaceVariant,
                                 ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    participating
-                                        ? 'Участвую'
-                                        : 'Покинул группу',
-                                    overflow: TextOverflow.ellipsis,
-                                    style: textTheme.bodyMedium?.copyWith(
-                                      color: participating
-                                          ? colorScheme.primary
-                                          : colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Icon(
-                                  Icons.people_outline,
-                                  size: 18,
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  'Участников: ${group.activeMemberCount}',
-                                  style: textTheme.bodyMedium?.copyWith(
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
+                              ),
                             ),
-                            if (group.invitedCount > 0) ...[
-                              const SizedBox(height: 6),
-                              Align(
-                                alignment: Alignment.centerRight,
-                                child: Text(
-                                  'Приглашены: ${group.invitedCount}',
-                                  style: textTheme.bodySmall?.copyWith(
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
+                            const SizedBox(width: 8),
+                            Icon(
+                              Icons.people_outline,
+                              size: 18,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Участников: ${group.activeMemberCount}',
+                              style: textTheme.bodyMedium?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
                               ),
-                            ],
-                            if (group.isUpcoming) ...[
-                              const SizedBox(height: 12),
-                              Text(
-                                'Карта и обмен геопозицией станут доступны после начала',
-                                style: textTheme.bodyMedium?.copyWith(
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                              Align(
-                                alignment: Alignment.centerRight,
-                                child: TextButton(
-                                  onPressed: onTap,
-                                  child: const Text('Подробнее'),
-                                ),
-                              ),
-                            ],
+                            ),
                           ],
                         ),
-                      ),
+                        if (group.invitedCount > 0) ...[
+                          const SizedBox(height: 6),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              'Приглашены: ${group.invitedCount}',
+                              style: textTheme.bodySmall?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        ],
+                        if (group.isUpcoming) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            'Карта и обмен геопозицией станут доступны после начала',
+                            style: textTheme.bodyMedium?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton(
+                              onPressed: onTap,
+                              child: const Text('Подробнее'),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                  ],
-                ),
-              ),
-            ),
-            if (onInvite != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                child: Center(
-                  child: OutlinedButton.icon(
-                    onPressed: onInvite,
-                    icon: const Icon(Icons.person_add_alt_1_outlined),
-                    label: const Text('Пригласить в группу'),
                   ),
                 ),
-              ),
+                if (onInvite != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: Center(
+                      child: OutlinedButton.icon(
+                        onPressed: onInvite,
+                        icon: const Icon(Icons.person_add_alt_1_outlined),
+                        label: const Text('Пригласить в группу'),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ],
         ),
       ),

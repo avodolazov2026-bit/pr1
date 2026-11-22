@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:app_links/app_links.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -83,7 +84,17 @@ class _SupabaseStartupAppState extends State<_SupabaseStartupApp> {
   }
 
   Future<void> _connect() async {
+    if (kDebugMode) {
+      final config = supabaseConfigFromEnvironment();
+      final host = Uri.tryParse(config.url)?.host ?? '';
+      debugPrint(
+        'bootstrap start: url=$host keyLength=${config.publishableKey.length}',
+      );
+    }
     final result = await bootstrapSupabase();
+    if (kDebugMode) {
+      debugPrint('bootstrap result: $result');
+    }
     if (!mounted) {
       return;
     }
@@ -105,7 +116,11 @@ class _SupabaseStartupAppState extends State<_SupabaseStartupApp> {
         _connecting = false;
         _startup = result;
       });
-    } catch (_) {
+    } catch (error, stack) {
+      if (kDebugMode) {
+        debugPrint('loadMyGroups failed: $error');
+        debugPrintStack(stackTrace: stack);
+      }
       if (!mounted) {
         return;
       }

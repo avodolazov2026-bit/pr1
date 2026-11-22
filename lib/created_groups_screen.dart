@@ -2,16 +2,20 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:geo_groups/auth_repository.dart';
 import 'package:geo_groups/foreground_location_sharing.dart';
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/group_card.dart';
 import 'package:geo_groups/group_schedule_form.dart';
 import 'package:geo_groups/group_screen.dart';
 import 'package:geo_groups/invite_source_sheet.dart';
+import 'package:geo_groups/phone_auth_screen.dart';
 import 'package:geo_groups/user_profile.dart';
 
 class CreatedGroupsScreen extends StatefulWidget {
-  const CreatedGroupsScreen({super.key});
+  const CreatedGroupsScreen({super.key, this.auth});
+
+  final AuthRepository? auth;
 
   @override
   State<CreatedGroupsScreen> createState() => _CreatedGroupsScreenState();
@@ -21,6 +25,7 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen>
     with WidgetsBindingObserver {
   GroupPeriod _period = GroupPeriod.week;
   Timer? _statusRefreshTimer;
+  var _promptOpen = false;
 
   List<GeoGroup> _visibleGroups() =>
       GroupsStore.instance.createdGroups(_period);
@@ -103,6 +108,8 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen>
     );
   }
 
+  AuthRepository get _auth => widget.auth ?? const SupabaseAuthRepository();
+
   Future<void> _addGroup() async {
     final draft = await showModalBottomSheet<_GroupDraft>(
       context: context,
@@ -156,6 +163,55 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen>
         .showSnackBar(const SnackBar(content: Text('Группа создана')));
   }
 
+  Future<void> _onCreateGroupPressed() async {
+    if (_auth.current.needsPhoneSignIn) {
+      await _promptPhoneSignIn();
+      return;
+    }
+    _addGroup();
+  }
+
+  Future<void> _promptPhoneSignIn() async {
+    if (_promptOpen || !mounted) {
+      return;
+    }
+    _promptOpen = true;
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text(phoneSignInDialogTitle),
+            content: const Text(phoneSignInDialogMessage),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('Отмена'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('Войти'),
+              ),
+            ],
+          );
+        },
+      );
+      if (confirmed != true || !mounted) {
+        return;
+      }
+      final signedIn = await Navigator.of(context).push<bool>(
+        MaterialPageRoute<bool>(
+          builder: (context) => PhoneAuthScreen(auth: _auth),
+        ),
+      );
+      if (signedIn == true && mounted) {
+        setState(() {});
+      }
+    } finally {
+      _promptOpen = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
@@ -170,13 +226,13 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen>
             const SizedBox(height: 8),
             IconButton.filled(
               tooltip: 'Создать группу',
-              onPressed: _addGroup,
+              onPressed: _onCreateGroupPressed,
               icon: const Icon(Icons.add),
               iconSize: 36,
               style: IconButton.styleFrom(fixedSize: const Size(72, 72)),
             ),
             TextButton(
-              onPressed: _addGroup,
+              onPressed: _onCreateGroupPressed,
               child: Text('Создать группу', style: textTheme.titleMedium),
             ),
             Padding(

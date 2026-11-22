@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import 'package:geo_groups/auth_repository.dart';
 import 'package:geo_groups/geo_group.dart';
+import 'package:geo_groups/phone_auth_screen.dart';
 import 'package:geo_groups/user_profile.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -9,11 +11,13 @@ class ProfileScreen extends StatefulWidget {
     required this.userId,
     required this.fallbackName,
     this.repository,
+    this.auth,
   });
 
   final String userId;
   final String fallbackName;
   final UserProfileRepository? repository;
+  final AuthRepository? auth;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -23,6 +27,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _nameController = TextEditingController();
   UserProfileRepository get _repository =>
       widget.repository ?? UserProfileStore.instance;
+
+  AuthRepository get _auth => widget.auth ?? const SupabaseAuthRepository();
 
   var _loading = true;
   var _saving = false;
@@ -40,7 +46,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.userId != widget.userId ||
         oldWidget.fallbackName != widget.fallbackName ||
-        oldWidget.repository != widget.repository) {
+        oldWidget.repository != widget.repository ||
+        oldWidget.auth != widget.auth) {
       _load();
     }
   }
@@ -96,6 +103,74 @@ class _ProfileScreenState extends State<ProfileScreen> {
     Navigator.of(context).pop(true);
   }
 
+  Future<void> _openPhoneAuth() async {
+    final signedIn = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (context) => PhoneAuthScreen(auth: _auth),
+      ),
+    );
+    if (signedIn == true && mounted) {
+      setState(() {});
+    }
+  }
+
+  Future<void> _signOut() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Выйти из аккаунта?'),
+          content: const Text('Вы сможете войти снова по номеру телефона.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Отмена'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Выйти'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+    final AuthSignOutResult result;
+    try {
+      result = await _auth.signOut();
+    } on AuthRequestException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
+      return;
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось выйти из аккаунта')),
+      );
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
+    if (!result.anonymousSessionRestored) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.notice ?? AuthSignOutResult.anonymousRestoreNotice,
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
@@ -116,6 +191,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       displayName: name,
                       radius: 48,
                     ),
+                  ),
+                  const SizedBox(height: 24),
+                  _PhoneAccountSection(
+                    account: _auth.current,
+                    onSignIn: _openPhoneAuth,
+                    onSignOut: _signOut,
                   ),
                   const SizedBox(height: 24),
                   TextField(
@@ -160,6 +241,53 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
             ),
+    );
+  }
+}
+
+class _PhoneAccountSection extends StatelessWidget {
+  const _PhoneAccountSection({
+    required this.account,
+    required this.onSignIn,
+    required this.onSignOut,
+  });
+
+  final AuthAccount account;
+  final VoidCallback onSignIn;
+  final VoidCallback onSignOut;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final phone = account.phoneE164;
+    if (account.kind == AuthKind.confirmedPhone && phone != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Номер телефона', style: textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Text(maskPhoneNumber(phone), style: textTheme.bodyLarge),
+          const SizedBox(height: 4),
+          Text('Номер подтверждён', style: textTheme.bodyMedium),
+          const SizedBox(height: 12),
+          OutlinedButton(
+            onPressed: onSignOut,
+            child: const Text('Выйти из аккаунта'),
+          ),
+        ],
+      );
+    }
+    if (!account.needsPhoneSignIn) {
+      return const SizedBox.shrink();
+    }
+    return Card(
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        title: const Text('Войти или зарегистрироваться'),
+        subtitle: const Text(phoneSignInSubtitle),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: onSignIn,
+      ),
     );
   }
 }

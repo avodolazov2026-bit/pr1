@@ -146,4 +146,163 @@ void main() {
       expect(initialized, 2);
     },
   );
+
+  test('restore opens a new session after an in-flight bootstrap', () async {
+    var initialized = 0;
+    var sessions = 0;
+    final gate = Completer<void>();
+    final config = supabaseConfigFromValues(
+      url: 'https://example.supabase.co',
+      publishableKey: 'publishable-key',
+    );
+
+    final first = bootstrapSupabase(
+      config: config,
+      initialize: (_) async => initialized++,
+      openSession: () async {
+        sessions++;
+        await gate.future;
+        return SupabaseStartup.ready;
+      },
+    );
+    final restored = restoreAnonymousSessionAfterSignOut(
+      config: config,
+      initialize: (_) async => initialized++,
+      openSession: () async {
+        sessions++;
+        return SupabaseStartup.failed;
+      },
+    );
+    gate.complete();
+
+    expect(await first, SupabaseStartup.ready);
+    expect(await restored, SupabaseStartup.failed);
+    expect(sessions, 2);
+    expect(initialized, 1);
+  });
+
+  test(
+    'a failed in-flight bootstrap does not escape anonymous restore',
+    () async {
+      var initialized = 0;
+      var sessions = 0;
+      final gate = Completer<void>();
+      final config = supabaseConfigFromValues(
+        url: 'https://example.supabase.co',
+        publishableKey: 'publishable-key',
+      );
+
+      final first = bootstrapSupabase(
+        config: config,
+        initialize: (_) async => initialized++,
+        openSession: () async {
+          sessions++;
+          await gate.future;
+          throw StateError('unavailable');
+        },
+      );
+      final restored = restoreAnonymousSessionAfterSignOut(
+        config: config,
+        initialize: (_) async => initialized++,
+        openSession: () async {
+          sessions++;
+          return SupabaseStartup.ready;
+        },
+      );
+      gate.complete();
+
+      expect(await first, SupabaseStartup.failed);
+      expect(await restored, SupabaseStartup.ready);
+      expect(sessions, 2);
+      expect(initialized, 1);
+    },
+  );
+
+  test(
+    'a failed session result is replaced by the next anonymous restore',
+    () async {
+      var initialized = 0;
+      var sessions = 0;
+      final gate = Completer<void>();
+      final config = supabaseConfigFromValues(
+        url: 'https://example.supabase.co',
+        publishableKey: 'publishable-key',
+      );
+
+      final first = bootstrapSupabase(
+        config: config,
+        initialize: (_) async => initialized++,
+        openSession: () async {
+          sessions++;
+          await gate.future;
+          return SupabaseStartup.failed;
+        },
+      );
+      final restored = restoreAnonymousSessionAfterSignOut(
+        config: config,
+        initialize: (_) async => initialized++,
+        openSession: () async {
+          sessions++;
+          return SupabaseStartup.ready;
+        },
+      );
+      gate.complete();
+
+      expect(await first, SupabaseStartup.failed);
+      expect(await restored, SupabaseStartup.ready);
+      expect(sessions, 2);
+      expect(initialized, 1);
+    },
+  );
+
+  test('restore after a finished bootstrap opens the session again', () async {
+    var initialized = 0;
+    var sessions = 0;
+    final config = supabaseConfigFromValues(
+      url: 'https://example.supabase.co',
+      publishableKey: 'publishable-key',
+    );
+
+    Future<void> initialize(SupabaseConfig _) async => initialized++;
+
+    Future<SupabaseStartup> openSession() async {
+      sessions++;
+      return SupabaseStartup.ready;
+    }
+
+    expect(
+      await bootstrapSupabase(
+        config: config,
+        initialize: initialize,
+        openSession: openSession,
+      ),
+      SupabaseStartup.ready,
+    );
+    expect(
+      await restoreAnonymousSessionAfterSignOut(
+        config: config,
+        initialize: initialize,
+        openSession: openSession,
+      ),
+      SupabaseStartup.ready,
+    );
+    expect(sessions, 2);
+    expect(initialized, 1);
+  });
+
+  test('a missing anonymous session does not report ready', () async {
+    final result = await bootstrapSupabase(
+      config: supabaseConfigFromValues(
+        url: 'https://example.supabase.co',
+        publishableKey: 'publishable-key',
+      ),
+      initialize: (_) async {},
+      openSession: () async {
+        throw StateError('anonymous session was not created');
+      },
+    );
+
+    expect(result, SupabaseStartup.failed);
+    expect(result, isNot(SupabaseStartup.ready));
+  });
 }

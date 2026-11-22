@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:geo_groups/auth_repository.dart';
 import 'package:geo_groups/created_groups_screen.dart';
 import 'package:geo_groups/current_location_provider.dart';
 import 'package:geo_groups/geo_coordinate.dart';
@@ -10,6 +11,7 @@ import 'package:geo_groups/group_card.dart';
 import 'package:geo_groups/group_invitation.dart';
 import 'package:geo_groups/group_map_screen.dart';
 import 'package:geo_groups/my_groups_screen.dart';
+import 'package:geo_groups/phone_auth_screen.dart';
 
 void main() {
   late List<GeoGroup> groupsBefore;
@@ -251,6 +253,19 @@ void main() {
       ),
     );
     expect(find.text('Пригласить в группу'), findsOneWidget);
+    final accent = tester.getRect(
+      find.byWidgetPredicate((widget) {
+        final decoration = widget is DecoratedBox ? widget.decoration : null;
+        return decoration is BoxDecoration &&
+            decoration.color == activeGroupAccent;
+      }),
+    );
+    final invite = tester.getRect(
+      find.widgetWithText(OutlinedButton, 'Пригласить в группу'),
+    );
+    expect(accent.width, 4);
+    expect(accent.top, lessThanOrEqualTo(invite.top));
+    expect(accent.bottom, greaterThanOrEqualTo(invite.bottom));
 
     await tester.tap(find.text('Пригласить в группу'));
     await tester.pump();
@@ -325,6 +340,104 @@ void main() {
     expect(_inviteOn('Группа участника'), findsNothing);
     expect(_inviteOn('Без ссылки'), findsNothing);
   });
+
+  testWidgets('an anonymous account is asked to sign in before the form', (
+    tester,
+  ) async {
+    await _openCreatedGroups(
+      tester,
+      _GateAuth(const AuthAccount.anonymous()),
+    );
+
+    await tester.tap(find.text('Создать группу'));
+    await tester.pumpAndSettle();
+
+    expect(find.text(phoneSignInDialogTitle), findsOneWidget);
+    expect(find.text(phoneSignInDialogMessage), findsOneWidget);
+    expect(find.text('Новая группа'), findsNothing);
+  });
+
+  testWidgets('cancelling the sign-in prompt leaves the create form closed', (
+    tester,
+  ) async {
+    await _openCreatedGroups(
+      tester,
+      _GateAuth(const AuthAccount.anonymous()),
+    );
+
+    await tester.tap(find.text('Создать группу'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Отмена'));
+    await tester.pumpAndSettle();
+
+    expect(find.text(phoneSignInDialogMessage), findsNothing);
+    expect(find.text('Новая группа'), findsNothing);
+    expect(find.byType(PhoneAuthScreen), findsNothing);
+    expect(find.text('Созданные группы'), findsOneWidget);
+  });
+
+  testWidgets('choosing sign-in opens the phone screen', (tester) async {
+    await _openCreatedGroups(
+      tester,
+      _GateAuth(const AuthAccount.anonymous()),
+    );
+
+    await tester.tap(find.text('Создать группу'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Войти'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PhoneAuthScreen), findsOneWidget);
+    expect(find.text('Новая группа'), findsNothing);
+  });
+
+  testWidgets('the sign-in prompt can be opened again after cancelling', (
+    tester,
+  ) async {
+    await _openCreatedGroups(tester, _GateAuth(const AuthAccount.anonymous()));
+
+    final createButton = find.text('Создать группу');
+
+    await tester.tap(createButton);
+    await tester.pumpAndSettle();
+    expect(find.text(phoneSignInDialogMessage), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(TextButton, 'Отмена'));
+    await tester.pumpAndSettle();
+    expect(find.text(phoneSignInDialogMessage), findsNothing);
+
+    await tester.tap(createButton);
+    await tester.pumpAndSettle();
+    expect(find.text(phoneSignInDialogMessage), findsOneWidget);
+    expect(find.text('Новая группа'), findsNothing);
+  });
+
+  testWidgets('a confirmed phone opens the create form immediately', (
+    tester,
+  ) async {
+    await _openCreatedGroups(
+      tester,
+      _GateAuth(const AuthAccount.confirmed('+79991234567')),
+    );
+
+    await tester.tap(find.text('Создать группу'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Новая группа'), findsOneWidget);
+    expect(find.text(phoneSignInDialogMessage), findsNothing);
+  });
+
+  testWidgets('a local account opens the create form immediately', (
+    tester,
+  ) async {
+    await _openCreatedGroups(tester, _GateAuth(const AuthAccount.local()));
+
+    await tester.tap(find.text('Создать группу'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Новая группа'), findsOneWidget);
+    expect(find.text(phoneSignInDialogMessage), findsNothing);
+  });
 }
 
 GeoGroup _createdGroup({
@@ -368,6 +481,41 @@ Finder _semantics(String label) {
 }
 
 const _silentLocation = _SilentLocation();
+
+class _GateAuth implements AuthRepository {
+  _GateAuth(this.account);
+
+  final AuthAccount account;
+
+  @override
+  AuthAccount get current => account;
+
+  @override
+  Future<void> sendPhoneOtp(String phoneE164) async {}
+
+  @override
+  Future<void> verifyPhoneOtp({
+    required String phoneE164,
+    required String code,
+  }) async {}
+
+  @override
+  Future<AuthSignOutResult> signOut() async {
+    return const AuthSignOutResult(anonymousSessionRestored: true);
+  }
+}
+
+Future<void> _openCreatedGroups(
+  WidgetTester tester,
+  AuthRepository auth,
+) async {
+  tester.view.physicalSize = const Size(800, 1600);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+  await tester.pumpWidget(MaterialApp(home: CreatedGroupsScreen(auth: auth)));
+  await tester.pumpAndSettle();
+}
 
 class _SilentLocation implements CurrentLocationProvider {
   const _SilentLocation();

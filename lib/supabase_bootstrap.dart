@@ -41,6 +41,37 @@ void resetSupabaseBootstrapState() {
   _ongoing = null;
 }
 
+/// После выхода снова включает штатный вход.
+///
+/// Уже идущий запуск дожидается и не подменяется. Он мог вернуть
+/// [SupabaseStartup.ready] для сессии, которую выход уже закрыл, поэтому флаг
+/// сбрасывается повторно и анонимная сессия открывается следующим
+/// [bootstrapSupabase]. Повторный [Supabase.initialize] не вызывается: SDK
+/// поднимает только [_initializeSupabase], и только пока он ещё не отмечен
+/// запущенным.
+Future<SupabaseStartup> restoreAnonymousSessionAfterSignOut({
+  SupabaseConfig? config,
+  Future<void> Function(SupabaseConfig config)? initialize,
+  Future<SupabaseStartup> Function()? openSession,
+  bool debugSdkHttp = false,
+}) async {
+  _sessionReady = false;
+  final ongoing = _ongoing;
+  if (ongoing != null) {
+    try {
+      await ongoing;
+    } catch (_) {}
+  }
+  // Предыдущий запуск мог успеть вернуть ready для уже закрытой сессии.
+  _sessionReady = false;
+  return bootstrapSupabase(
+    config: config,
+    initialize: initialize,
+    openSession: openSession,
+    debugSdkHttp: debugSdkHttp,
+  );
+}
+
 /// Инициализирует SDK один раз и восстанавливает либо создаёт анонимную сессию.
 ///
 /// Без обоих параметров сразу возвращает [SupabaseStartup.local] и к сети не обращается.
@@ -48,6 +79,7 @@ Future<SupabaseStartup> bootstrapSupabase({
   SupabaseConfig? config,
   Future<void> Function(SupabaseConfig config)? initialize,
   Future<SupabaseStartup> Function()? openSession,
+  bool debugSdkHttp = false,
 }) {
   final resolved = config ?? supabaseConfigFromEnvironment();
   if (!resolved.isConfigured) {
@@ -62,7 +94,7 @@ Future<SupabaseStartup> bootstrapSupabase({
   }
   final run = _bootstrap(
     resolved,
-    initialize ?? _initializeSupabase,
+    initialize ?? (config) => _initializeSupabase(config, debug: debugSdkHttp),
     openSession ?? _openAnonymousSession,
   );
   _ongoing = run;
@@ -91,17 +123,37 @@ Future<SupabaseStartup> _bootstrap(
     return result;
   } catch (error) {
     if (kDebugMode) {
-      debugPrint('Supabase bootstrap failed: ${error.runtimeType}');
+      _logBootstrapFailure(error);
     }
     return SupabaseStartup.failed;
   }
 }
 
-Future<void> _initializeSupabase(SupabaseConfig config) {
+void _logBootstrapFailure(Object error) {
+  debugPrint('Supabase bootstrap failed: ${error.runtimeType}: $error');
+  if (error is AuthException) {
+    debugPrint(
+      'Supabase bootstrap details: '
+      'code=${error.code} status=${error.statusCode} message=${error.message}',
+    );
+    return;
+  }
+  if (error is PostgrestException) {
+    debugPrint(
+      'Supabase bootstrap details: '
+      'code=${error.code} message=${error.message}',
+    );
+  }
+}
+
+Future<void> _initializeSupabase(
+  SupabaseConfig config, {
+  bool debug = false,
+}) {
   return Supabase.initialize(
     url: config.url,
     publishableKey: config.publishableKey,
-    debug: false,
+    debug: debug,
   );
 }
 
@@ -111,7 +163,7 @@ Future<SupabaseStartup> _openAnonymousSession() async {
     await auth.signInAnonymously();
   }
   if (auth.currentSession == null) {
-    return SupabaseStartup.failed;
+    throw StateError('anonymous session was not created');
   }
   return SupabaseStartup.ready;
 }
