@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:geo_groups/foreground_location_sharing.dart';
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/supabase_bootstrap.dart';
 
@@ -40,6 +41,7 @@ void publishLoadedGroups(
     currentDemoUserId = currentUserId;
   }
   GroupsStore.instance.replaceGroups(groups);
+  notifySharingTargetsChanged();
 }
 
 /// Текущий локальный список. К сети не обращается.

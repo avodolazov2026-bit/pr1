@@ -430,6 +430,166 @@ void main() {
     expect(device.cancels, 1);
     expect(sharing.calls, hasLength(1));
   });
+
+  testWidgets('a sharing target that appears while resumed is evaluated once', (
+    tester,
+  ) async {
+    final groups = <GeoGroup>[];
+    final device = _Device(
+      permission: LocationAccess.denied,
+      afterRequest: LocationAccess.granted,
+    );
+    final runtime = _runtime(
+      device: device,
+      sharing: _RecordingSharing(),
+      groups: groups,
+      now: start,
+    );
+
+    runtime.onSharingTargetsChanged();
+    await runtime.settle();
+    expect(device.requests, 0);
+    expect(device.watches, 0);
+
+    runtime.start();
+    runtime.didChangeAppLifecycleState(AppLifecycleState.resumed);
+    await runtime.settle();
+    expect(device.requests, 0);
+    expect(device.watches, 0);
+
+    groups.add(_active(start));
+    runtime.onSharingTargetsChanged();
+    await runtime.settle();
+
+    expect(device.requests, 1);
+    expect(device.watches, 1);
+
+    runtime.onSharingTargetsChanged();
+    await runtime.settle();
+
+    expect(device.requests, 1);
+    expect(device.watches, 1);
+    runtime.dispose();
+  });
+
+  testWidgets('a future sharing target is armed and starts at its boundary', (
+    tester,
+  ) async {
+    final groups = <GeoGroup>[];
+    var now = start;
+    final device = _Device();
+    final runtime = _runtime(
+      device: device,
+      sharing: _RecordingSharing(),
+      groups: groups,
+      now: () => now,
+    );
+    final begins = start.add(const Duration(minutes: 5));
+
+    runtime.start();
+    runtime.didChangeAppLifecycleState(AppLifecycleState.resumed);
+    await runtime.settle();
+    expect(device.watches, 0);
+
+    groups.add(
+      _group(
+        id: 'later',
+        at: start,
+        startsAt: begins,
+        endsAt: begins.add(const Duration(hours: 1)),
+      ),
+    );
+    runtime.onSharingTargetsChanged();
+    await runtime.settle();
+    expect(device.watches, 0);
+    expect(device.requests, 0);
+
+    now = begins;
+    await tester.pump(const Duration(minutes: 5));
+    await runtime.settle();
+
+    expect(device.watches, 1);
+    expect(device.requests, 0);
+    runtime.dispose();
+  });
+
+  test('a target change while paused does not ask for permission', () async {
+    final groups = <GeoGroup>[];
+    final device = _Device(permission: LocationAccess.denied);
+    final runtime = _runtime(
+      device: device,
+      sharing: _RecordingSharing(),
+      groups: groups,
+      now: start,
+    );
+
+    runtime.start();
+    runtime.didChangeAppLifecycleState(AppLifecycleState.resumed);
+    await runtime.settle();
+    runtime.didChangeAppLifecycleState(AppLifecycleState.paused);
+    groups.add(_active(start));
+    runtime.onSharingTargetsChanged();
+    await runtime.settle();
+
+    expect(device.requests, 0);
+    expect(device.watches, 0);
+    runtime.dispose();
+  });
+
+  testWidgets('a target change during a permission request is reevaluated', (
+    tester,
+  ) async {
+    final groups = <GeoGroup>[_active(start)];
+    var now = start;
+    final device = _Device(permission: LocationAccess.denied);
+    final gate = Completer<LocationAccess>();
+    device.requestGate = gate;
+    final runtime = _runtime(
+      device: device,
+      sharing: _RecordingSharing(),
+      groups: groups,
+      now: () => now,
+    );
+    final begins = start.add(const Duration(minutes: 5));
+
+    runtime.start();
+    runtime.didChangeAppLifecycleState(AppLifecycleState.resumed);
+    final inFlight = runtime.settle();
+    await tester.pump();
+
+    expect(device.requests, 1);
+    expect(device.watches, 0);
+
+    groups
+      ..clear()
+      ..add(
+        _group(
+          id: 'later',
+          at: start,
+          startsAt: begins,
+          endsAt: begins.add(const Duration(hours: 1)),
+        ),
+      );
+    runtime.onSharingTargetsChanged();
+
+    device.permission = LocationAccess.granted;
+    gate.complete(LocationAccess.granted);
+    await tester.pump();
+    await inFlight;
+    await runtime.settle();
+
+    expect(device.requests, 1);
+    expect(device.watches, 0);
+
+    now = begins;
+    await tester.pump(const Duration(minutes: 5));
+    await runtime.settle();
+
+    expect(device.requests, 1);
+    expect(device.watches, 1);
+    expect(device.cancels, 0);
+    runtime.dispose();
+  });
 }
 
 ForegroundLocationSharing _runtime({

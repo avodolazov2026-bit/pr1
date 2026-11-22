@@ -287,7 +287,15 @@ class _MemberMapState extends State<_MemberMap> {
     final provider = widget.locationProvider ?? DeviceLocationProvider();
     GeoCoordinate? position;
     try {
-      position = await provider.currentPosition();
+      final access = await provider.ensurePermissionForJoin();
+      if (!mounted ||
+          request != _locationRequest ||
+          widget.group.id != groupId) {
+        return;
+      }
+      if (access == LocationAccess.granted) {
+        position = await provider.currentPosition();
+      }
     } catch (_) {
       position = null;
     }

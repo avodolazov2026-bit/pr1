@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:geo_groups/foreground_location_sharing.dart';
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/group_card.dart';
 import 'package:geo_groups/group_schedule_form.dart';
@@ -148,6 +149,7 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen>
     );
     GroupsStore.instance.addGroup(group);
     GroupsStore.instance.syncInvitations(group);
+    notifySharingTargetsChanged();
     setState(() {});
     _scheduleStatusRefresh();
     ScaffoldMessenger.of(context)

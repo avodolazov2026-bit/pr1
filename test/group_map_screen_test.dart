@@ -728,12 +728,90 @@ void main() {
       );
       await tester.pump();
 
-      expect(device.requests, 0);
+      expect(device.requests, index == 1 ? 1 : 0);
+      expect(device.reads, index == 3 ? 1 : 0);
       expect(_semantics('Ваше местоположение'), findsNothing);
       expect(_semantics('Позиция участника: Мария'), findsOneWidget);
       expect(find.text('На карте: 1 участник'), findsOneWidget);
       expect(tester.takeException(), isNull);
     }
+  });
+
+  testWidgets('denied map access asks once and shows the user marker', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    final device = FakeLocationDevice(
+      permission: LocationAccess.denied,
+      afterRequest: LocationAccess.granted,
+      position: GeoCoordinate(latitude: 55.7539, longitude: 37.6208),
+    );
+    final group = _locatedGroup(
+      id: 'map-ask-once',
+      now: now,
+      members: [GroupMember(id: currentDemoUserId, name: 'Вы')],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GroupMapScreen(
+          locationProvider: DeviceLocationProvider(device: device),
+          group: group,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(device.requests, 1);
+    expect(device.reads, 1);
+    expect(find.byType(FlutterMap), findsOneWidget);
+    expect(_semantics('Ваше местоположение'), findsOneWidget);
+    expect(find.byTooltip('Показать всех участников'), findsOneWidget);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GroupMapScreen(
+          locationProvider: DeviceLocationProvider(device: device),
+          group: _locatedGroup(
+            id: group.id,
+            now: now,
+            members: [GroupMember(id: currentDemoUserId, name: 'Вы')],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(device.requests, 1);
+  });
+
+  testWidgets('an already granted map reads the position without asking', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    final device = FakeLocationDevice(
+      permission: LocationAccess.granted,
+      position: GeoCoordinate(latitude: 55.76, longitude: 37.64),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GroupMapScreen(
+          locationProvider: DeviceLocationProvider(device: device),
+          group: _locatedGroup(
+            id: 'map-already-granted',
+            now: now,
+            members: [GroupMember(id: currentDemoUserId, name: 'Вы')],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(device.requests, 0);
+    expect(device.reads, 1);
+    expect(_semantics('Ваше местоположение'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('a failed device read leaves an empty map usable', (

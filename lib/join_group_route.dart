@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:geo_groups/foreground_location_sharing.dart';
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/join_group_confirmation_screen.dart';
 
@@ -23,6 +24,9 @@ Future<bool> openJoinGroupConfirmation({
       ),
     ),
   );
+  if (joined == true) {
+    notifySharingTargetsChanged();
+  }
   if (!context.mounted) {
     return false;
   }

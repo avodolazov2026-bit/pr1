@@ -8,6 +8,15 @@ import 'package:geo_groups/geo_coordinate.dart';
 import 'package:geo_groups/location_sharing_coordinator.dart';
 import 'package:geo_groups/location_sharing_service.dart';
 
+/// Сообщает уже запущенной передаче, что набор групп изменился.
+///
+/// До [ForegroundLocationSharing.start] вызов ничего не делает.
+void notifySharingTargetsChanged() {
+  _startedSharing?.onSharingTargetsChanged();
+}
+
+ForegroundLocationSharing? _startedSharing;
+
 /// Держит GPS-поток только пока приложение на экране и есть куда передавать точку.
 ///
 /// Свёрнутое и заблокированное приложение поток останавливает. Фоновый режим не включает.
@@ -41,6 +50,7 @@ class ForegroundLocationSharing extends WidgetsBindingObserver {
       return;
     }
     _observing = true;
+    _startedSharing = this;
     WidgetsBinding.instance.addObserver(this);
     final state = WidgetsBinding.instance.lifecycleState;
     if (state == null) {
@@ -69,12 +79,31 @@ class ForegroundLocationSharing extends WidgetsBindingObserver {
   /// Завершает текущую проверку разрешений. Нужно тестам после смены состояния.
   Future<void> settle() => _evaluation ?? Future<void>.value();
 
+  /// Пересчитывает цели после создания, вступления или загрузки групп.
+  ///
+  /// Пока сервис не запущен, ничего не делает и второй поток не открывает.
+  /// В том же [AppLifecycleState.resumed] разрешение по-прежнему спрашивает
+  /// не больше одного раза. Границу расписания заново ставит [_evaluate].
+  void onSharingTargetsChanged() {
+    if (_disposed || !_observing || !_resumed) {
+      return;
+    }
+    if (_opening) {
+      _generation++;
+      return;
+    }
+    _evaluation = _evaluate();
+  }
+
   void dispose() {
     _disposed = true;
     _resumed = false;
     _generation++;
     _stopStream();
     _boundaryTimer?.cancel();
+    if (identical(_startedSharing, this)) {
+      _startedSharing = null;
+    }
     if (_observing) {
       WidgetsBinding.instance.removeObserver(this);
       _observing = false;
