@@ -10,6 +10,7 @@ import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/group_card.dart';
 import 'package:geo_groups/group_invitation.dart';
 import 'package:geo_groups/group_map_screen.dart';
+import 'package:geo_groups/group_repository.dart';
 import 'package:geo_groups/my_groups_screen.dart';
 import 'package:geo_groups/phone_auth_screen.dart';
 
@@ -118,7 +119,11 @@ void main() {
       'user_profile.new-group-creator.avatar_id': 'amber_star',
     });
 
-    await tester.pumpWidget(const MaterialApp(home: CreatedGroupsScreen()));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CreatedGroupsScreen(groups: LocalGroupRepository()),
+      ),
+    );
     await tester.tap(find.text('Создать группу').first);
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'Новый поход');

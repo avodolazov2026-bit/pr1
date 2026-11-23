@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geo_groups/auth_repository.dart';
 import 'package:geo_groups/created_groups_screen.dart';
 import 'package:geo_groups/geo_group.dart';
+import 'package:geo_groups/group_repository.dart';
 import 'package:geo_groups/phone_auth_screen.dart';
 import 'package:geo_groups/profile_screen.dart';
 import 'package:geo_groups/user_profile.dart';
@@ -335,7 +336,14 @@ Future<void> _openCreate(WidgetTester tester, AuthRepository auth) async {
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
-  await tester.pumpWidget(MaterialApp(home: CreatedGroupsScreen(auth: auth)));
+  await tester.pumpWidget(
+    MaterialApp(
+      home: CreatedGroupsScreen(
+        auth: auth,
+        groups: LocalGroupRepository(),
+      ),
+    ),
+  );
 }
 
 Future<void> _submitIndefiniteGroup(WidgetTester tester, String name) async {

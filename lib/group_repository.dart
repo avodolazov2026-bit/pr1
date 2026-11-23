@@ -4,19 +4,40 @@ import 'package:geo_groups/foreground_location_sharing.dart';
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/supabase_bootstrap.dart';
 
-/// Чтение групп текущего пользователя. Запись в хранилище здесь не выполняется.
+/// Чтение групп текущего пользователя и создание через выбранный источник.
 abstract class GroupReadRepository {
   Future<List<GeoGroup>> loadMyGroups();
+
+  /// Возвращает серверный uuid. Локальный id не подставляет.
+  Future<String> createGroup({
+    required String name,
+    required DateTime startsAt,
+    DateTime? endsAt,
+  });
 }
 
-/// Какой источник групп использовать после bootstrap.
+/// Какой источник групп использовать.
 enum GroupRepositoryKind { local, supabase }
 
+/// Явный флаг сборки. По умолчанию включена настоящая реализация.
+const useLocalGroupRepository = bool.fromEnvironment(
+  'USE_LOCAL_GROUP_REPOSITORY',
+);
+
 GroupRepositoryKind groupRepositoryKindFor(SupabaseStartup startup) {
-  if (startup == SupabaseStartup.ready) {
-    return GroupRepositoryKind.supabase;
+  // Состояние сессии и bootstrap источник не выбирают.
+  if (useLocalGroupRepository) {
+    return GroupRepositoryKind.local;
   }
-  return GroupRepositoryKind.local;
+  return switch (startup) {
+    SupabaseStartup.local ||
+    SupabaseStartup.failed ||
+    SupabaseStartup.ready => GroupRepositoryKind.supabase,
+  };
+}
+
+GroupReadRepository defaultGroupRepository() {
+  return groupRepositoryFor(SupabaseStartup.local);
 }
 
 GroupReadRepository groupRepositoryFor(SupabaseStartup startup) {
@@ -44,11 +65,20 @@ void publishLoadedGroups(
   notifySharingTargetsChanged();
 }
 
-/// Текущий локальный список. К сети не обращается.
+/// Текущий локальный список. В рантайме не выбирается без флага сборки.
 class LocalGroupRepository implements GroupReadRepository {
   @override
   Future<List<GeoGroup>> loadMyGroups() async {
     return GroupsStore.instance.myGroups;
+  }
+
+  @override
+  Future<String> createGroup({
+    required String name,
+    required DateTime startsAt,
+    DateTime? endsAt,
+  }) async {
+    return GroupsStore.instance.nextId('group');
   }
 }
 
@@ -60,18 +90,27 @@ typedef GroupRows = Future<List<Map<String, dynamic>>> Function(
   List<String> groupIds,
 );
 
+typedef CreateGroupCall = Future<Object?> Function({
+  required String name,
+  required DateTime startsAt,
+  DateTime? endsAt,
+});
+
 /// Группы пользователя: сначала его строки memberships, затем связанные groups.
 class SupabaseGroupRepository implements GroupReadRepository {
   SupabaseGroupRepository({
     this.userId,
     MembershipRows? memberships,
     GroupRows? groups,
+    CreateGroupCall? createGroupCall,
   }) : _memberships = memberships ?? _membershipsFromSupabase,
-       _groups = groups ?? _groupsFromSupabase;
+       _groups = groups ?? _groupsFromSupabase,
+       _createGroupCall = createGroupCall ?? _createGroupFromSupabase;
 
   final String? userId;
   final MembershipRows _memberships;
   final GroupRows _groups;
+  final CreateGroupCall _createGroupCall;
 
   @override
   Future<List<GeoGroup>> loadMyGroups() async {
@@ -99,6 +138,40 @@ class SupabaseGroupRepository implements GroupReadRepository {
       groups: groups,
     );
   }
+
+  @override
+  Future<String> createGroup({
+    required String name,
+    required DateTime startsAt,
+    DateTime? endsAt,
+  }) async {
+    final created = await _createGroupCall(
+      name: name,
+      startsAt: startsAt,
+      endsAt: endsAt,
+    );
+    if (created is! String || created.isEmpty) {
+      throw const PostgrestException(
+        message: 'Сервер не вернул идентификатор группы',
+      );
+    }
+    return created;
+  }
+}
+
+Future<Object?> _createGroupFromSupabase({
+  required String name,
+  required DateTime startsAt,
+  DateTime? endsAt,
+}) {
+  return Supabase.instance.client.rpc(
+    'create_group',
+    params: {
+      'p_name': name,
+      'p_starts_at': startsAt.toUtc().toIso8601String(),
+      'p_ends_at': endsAt?.toUtc().toIso8601String(),
+    },
+  );
 }
 
 Future<List<Map<String, dynamic>>> _membershipsFromSupabase(

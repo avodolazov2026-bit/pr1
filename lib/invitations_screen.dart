@@ -1,12 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/group_invitation.dart';
+import 'package:geo_groups/group_invitation_repository.dart' hide GroupInvitation;
 import 'package:geo_groups/join_group_route.dart';
 
 class InvitationsScreen extends StatefulWidget {
-  const InvitationsScreen({super.key});
+  const InvitationsScreen({
+    super.key,
+    this.invitations,
+    this.onInvitationsChanged,
+  });
+
+  final GroupInvitationRepository? invitations;
+  final Future<void> Function()? onInvitationsChanged;
 
   @override
   State<InvitationsScreen> createState() => _InvitationsScreenState();
@@ -14,11 +23,18 @@ class InvitationsScreen extends StatefulWidget {
 
 class _InvitationsScreenState extends State<InvitationsScreen> {
   final _payloadController = TextEditingController();
+  var _loadingSaved = false;
+  var _saved = const <SavedGroupInvitation>[];
+  String? _joiningId;
 
   @override
   void initState() {
     super.initState();
     groupFlowRevision.addListener(_onGroupFlowChanged);
+    if (widget.invitations != null) {
+      _loadingSaved = true;
+      _loadSaved();
+    }
   }
 
   @override
@@ -31,6 +47,76 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
   void _onGroupFlowChanged() {
     if (mounted) {
       setState(() {});
+    }
+  }
+
+  Future<void> _loadSaved() async {
+    final invitations = widget.invitations;
+    if (invitations == null) {
+      return;
+    }
+    try {
+      final rows = await invitations.listSaved();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _saved = rows;
+        _loadingSaved = false;
+      });
+    } on PostgrestException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _loadingSaved = false);
+      _showSnackBar(error.message);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _loadingSaved = false);
+    }
+  }
+
+  Future<void> _acceptSaved(SavedGroupInvitation invitation) async {
+    final invitations = widget.invitations;
+    if (invitations == null || _joiningId != null) {
+      return;
+    }
+    final savedBefore = _saved;
+    setState(() => _joiningId = invitation.savedInvitationId);
+    try {
+      final result = await invitations.acceptSaved(invitation.savedInvitationId);
+      if (!mounted) {
+        return;
+      }
+      if (result == null) {
+        _showSnackBar('Приглашение недоступно');
+        return;
+      }
+      if (result.membershipResult == MembershipResult.joined) {
+        await _loadSaved();
+        await widget.onInvitationsChanged?.call();
+        if (mounted) {
+          _showSnackBar('Вы вступили в группу');
+        }
+        return;
+      }
+      await widget.onInvitationsChanged?.call();
+      await _loadSaved();
+      if (mounted) {
+        _showSnackBar('Вы уже участвуете в этой группе');
+      }
+    } on PostgrestException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _saved = savedBefore);
+      _showSnackBar(error.message);
+    } finally {
+      if (mounted) {
+        setState(() => _joiningId = null);
+      }
     }
   }
 
@@ -166,7 +252,8 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
-    final invitations = GroupsStore.instance.incomingPending;
+    final localInvitations = GroupsStore.instance.incomingPending;
+    final useSaved = widget.invitations != null;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Приглашения')),
@@ -211,40 +298,155 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
             const SizedBox(height: 24),
             Text('Ожидающие приглашения', style: textTheme.titleMedium),
             const SizedBox(height: 12),
-            if (invitations.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 24),
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.mark_email_unread_outlined,
-                      size: 48,
-                      color: colorScheme.primary,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Нет новых приглашений',
-                      style: textTheme.titleLarge,
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Здесь появятся приглашения в группы.',
-                      style: textTheme.bodyLarge,
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              )
-            else
-              for (final invitation in invitations) ...[
-                _InvitationCard(
-                  invitation: invitation,
-                  onDecline: () => _decline(invitation),
-                  onJoin: () => _join(invitation),
-                ),
-                if (invitation != invitations.last) const SizedBox(height: 12),
-              ],
+            ..._pendingInvitations(
+              textTheme: textTheme,
+              colorScheme: colorScheme,
+              useSaved: useSaved,
+              localInvitations: localInvitations,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _pendingInvitations({
+    required TextTheme textTheme,
+    required ColorScheme colorScheme,
+    required bool useSaved,
+    required List<GroupInvitation> localInvitations,
+  }) {
+    if (useSaved) {
+      if (_loadingSaved && _saved.isEmpty) {
+        return const [
+          Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+        ];
+      }
+      if (_saved.isEmpty) {
+        return [
+          _EmptyInvitations(textTheme: textTheme, colorScheme: colorScheme),
+        ];
+      }
+      return [
+        for (var index = 0; index < _saved.length; index++) ...[
+          _SavedInvitationCard(
+            invitation: _saved[index],
+            joining: _joiningId == _saved[index].savedInvitationId,
+            enabled: _joiningId == null,
+            onJoin: () => _acceptSaved(_saved[index]),
+          ),
+          if (index != _saved.length - 1) const SizedBox(height: 12),
+        ],
+      ];
+    }
+    if (localInvitations.isEmpty) {
+      return [
+        _EmptyInvitations(textTheme: textTheme, colorScheme: colorScheme),
+      ];
+    }
+    return [
+      for (var index = 0; index < localInvitations.length; index++) ...[
+        _InvitationCard(
+          invitation: localInvitations[index],
+          onDecline: () => _decline(localInvitations[index]),
+          onJoin: () => _join(localInvitations[index]),
+        ),
+        if (index != localInvitations.length - 1) const SizedBox(height: 12),
+      ],
+    ];
+  }
+}
+
+class _EmptyInvitations extends StatelessWidget {
+  const _EmptyInvitations({required this.textTheme, required this.colorScheme});
+
+  final TextTheme textTheme;
+  final ColorScheme colorScheme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 24),
+      child: Column(
+        children: [
+          Icon(
+            Icons.mark_email_unread_outlined,
+            size: 48,
+            color: colorScheme.primary,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Нет новых приглашений',
+            style: textTheme.titleLarge,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Здесь появятся приглашения в группы.',
+            style: textTheme.bodyLarge,
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SavedInvitationCard extends StatelessWidget {
+  const _SavedInvitationCard({
+    required this.invitation,
+    required this.joining,
+    required this.enabled,
+    required this.onJoin,
+  });
+
+  final SavedGroupInvitation invitation;
+  final bool joining;
+  final bool enabled;
+  final VoidCallback onJoin;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final endsAt = invitation.endsAt;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(invitation.groupName, style: textTheme.titleMedium),
+            const SizedBox(height: 8),
+            Text(
+              'Организатор: ${invitation.organizerDisplayName}',
+              style: textTheme.bodyLarge,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              endsAt == null
+                  ? 'Начнётся ${formatGroupDateTime(invitation.startsAt)}'
+                  : 'До ${formatGroupDateTime(endsAt)}',
+              style: textTheme.bodyLarge,
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: enabled ? onJoin : null,
+              child: joining
+                  ? SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: colorScheme.onPrimary,
+                      ),
+                    )
+                  : const Text('Вступить в группу'),
+            ),
           ],
         ),
       ),

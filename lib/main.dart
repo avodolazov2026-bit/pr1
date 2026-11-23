@@ -9,6 +9,7 @@ import 'package:geo_groups/app_link_handler.dart';
 import 'package:geo_groups/created_groups_screen.dart';
 import 'package:geo_groups/foreground_location_sharing.dart';
 import 'package:geo_groups/geo_group.dart';
+import 'package:geo_groups/group_invitation_repository.dart';
 import 'package:geo_groups/group_repository.dart';
 import 'package:geo_groups/invitations_screen.dart';
 import 'package:geo_groups/join_group_route.dart';
@@ -286,7 +287,7 @@ class _MyAppState extends State<MyApp> {
       navigatorKey: appNavigatorKey,
       title: 'Geo Groups',
       theme: appLightTheme,
-      home: const HomeScreen(),
+      home: HomeScreen(invitations: defaultGroupInvitationRepository()),
       builder: (context, child) {
         return LocationRepositoryScope(
           repository: widget.locations,
@@ -298,17 +299,22 @@ class _MyAppState extends State<MyApp> {
 }
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, this.invitations});
+
+  final GroupInvitationRepository? invitations;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  int? _serverUnseen;
+
   @override
   void initState() {
     super.initState();
     groupFlowRevision.addListener(_onGroupFlowChanged);
+    _refreshUnseen();
   }
 
   @override
@@ -320,6 +326,21 @@ class _HomeScreenState extends State<HomeScreen> {
   void _onGroupFlowChanged() {
     if (mounted) {
       setState(() {});
+    }
+  }
+
+  Future<void> _refreshUnseen() async {
+    final invitations = widget.invitations;
+    if (invitations == null) {
+      return;
+    }
+    try {
+      final count = await invitations.countUnseen();
+      if (mounted) {
+        setState(() => _serverUnseen = count);
+      }
+    } catch (_) {
+      // Счётчик на кнопке остаётся прежним, пока сервер не ответил.
     }
   }
 
@@ -348,9 +369,11 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _openScreen(Widget screen) async {
     await Navigator.of(context)
         .push(MaterialPageRoute<void>(builder: (context) => screen));
-    if (mounted) {
-      setState(() {});
+    if (!mounted) {
+      return;
     }
+    setState(() {});
+    await _refreshUnseen();
   }
 
    @override
@@ -411,11 +434,18 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 12),
               OutlinedButton(
-                onPressed: () => _openScreen(const InvitationsScreen()),
-                child: _JoinInvitationLabel(
-                  count: GroupsStore.instance.pendingInvitationCountFor(
-                    currentDemoUserId,
+                onPressed: () => _openScreen(
+                  InvitationsScreen(
+                    invitations: widget.invitations,
+                    onInvitationsChanged: _refreshUnseen,
                   ),
+                ),
+                child: _JoinInvitationLabel(
+                  count:
+                      _serverUnseen ??
+                      GroupsStore.instance.pendingInvitationCountFor(
+                        currentDemoUserId,
+                      ),
                 ),
               ),
               const SizedBox(height: 12),

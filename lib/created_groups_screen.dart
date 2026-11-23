@@ -1,11 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:geo_groups/auth_repository.dart';
 import 'package:geo_groups/foreground_location_sharing.dart';
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/group_card.dart';
+import 'package:geo_groups/group_repository.dart';
 import 'package:geo_groups/group_schedule_form.dart';
 import 'package:geo_groups/group_screen.dart';
 import 'package:geo_groups/invite_source_sheet.dart';
@@ -13,9 +15,10 @@ import 'package:geo_groups/phone_auth_screen.dart';
 import 'package:geo_groups/user_profile.dart';
 
 class CreatedGroupsScreen extends StatefulWidget {
-  const CreatedGroupsScreen({super.key, this.auth});
+  const CreatedGroupsScreen({super.key, this.auth, this.groups});
 
   final AuthRepository? auth;
+  final GroupReadRepository? groups;
 
   @override
   State<CreatedGroupsScreen> createState() => _CreatedGroupsScreenState();
@@ -140,8 +143,38 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen>
       return;
     }
 
+    final GroupReadRepository groups =
+        widget.groups ?? defaultGroupRepository();
+    final String groupId;
+    try {
+      groupId = await groups.createGroup(
+        name: draft.name,
+        startsAt: draft.startsAt,
+        endsAt: draft.endsAt,
+      );
+    } on PostgrestException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+      return;
+    } on AuthException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+
     final group = GeoGroup(
-      id: GroupsStore.instance.nextId('group'),
+      id: groupId,
       name: draft.name,
       createdAt: DateTime.now(),
       startsAt: draft.startsAt,

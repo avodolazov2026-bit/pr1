@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/group_repository.dart';
@@ -16,14 +17,14 @@ void main() {
     GroupsStore.instance.replaceGroups(groupsBefore);
   });
 
-  test('repository follows startup mode and stays local without a session', () {
+  test('repository defaults to supabase regardless of startup', () {
     expect(
       groupRepositoryKindFor(SupabaseStartup.local),
-      GroupRepositoryKind.local,
+      GroupRepositoryKind.supabase,
     );
     expect(
       groupRepositoryKindFor(SupabaseStartup.failed),
-      GroupRepositoryKind.local,
+      GroupRepositoryKind.supabase,
     );
     expect(
       groupRepositoryKindFor(SupabaseStartup.ready),
@@ -31,11 +32,11 @@ void main() {
     );
     expect(
       groupRepositoryFor(SupabaseStartup.local),
-      isA<LocalGroupRepository>(),
+      isA<SupabaseGroupRepository>(),
     );
     expect(
       groupRepositoryFor(SupabaseStartup.failed),
-      isA<LocalGroupRepository>(),
+      isA<SupabaseGroupRepository>(),
     );
     expect(
       groupRepositoryFor(SupabaseStartup.ready),
@@ -299,5 +300,62 @@ void main() {
     );
 
     expect(groups, isEmpty);
+  });
+
+  test('createGroup calls create_group and returns its uuid', () async {
+    String? seenName;
+    DateTime? seenStart;
+    DateTime? seenEnd;
+    final repository = SupabaseGroupRepository(
+      createGroupCall: ({
+        required String name,
+        required DateTime startsAt,
+        DateTime? endsAt,
+      }) async {
+        seenName = name;
+        seenStart = startsAt;
+        seenEnd = endsAt;
+        return '6b1b1b1b-1b1b-4b1b-8b1b-1b1b1b1b1b1b';
+      },
+    );
+    final startsAt = DateTime.utc(2026, 11, 23, 12);
+    final endsAt = DateTime.utc(2026, 11, 23, 15);
+
+    final id = await repository.createGroup(
+      name: 'Прогулка',
+      startsAt: startsAt,
+      endsAt: endsAt,
+    );
+
+    expect(id, '6b1b1b1b-1b1b-4b1b-8b1b-1b1b1b1b1b1b');
+    expect(seenName, 'Прогулка');
+    expect(seenStart, startsAt);
+    expect(seenEnd, endsAt);
+  });
+
+  test('createGroup lets a PostgrestException through', () {
+    final repository = SupabaseGroupRepository(
+      createGroupCall: ({
+        required String name,
+        required DateTime startsAt,
+        DateTime? endsAt,
+      }) async {
+        throw const PostgrestException(message: 'Создание группы недоступно');
+      },
+    );
+
+    expect(
+      () => repository.createGroup(
+        name: 'Прогулка',
+        startsAt: DateTime.utc(2026, 11, 23, 12),
+      ),
+      throwsA(
+        isA<PostgrestException>().having(
+          (error) => error.message,
+          'message',
+          'Создание группы недоступно',
+        ),
+      ),
+    );
   });
 }
