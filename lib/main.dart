@@ -18,6 +18,8 @@ import 'package:geo_groups/location_sharing_coordinator.dart';
 import 'package:geo_groups/location_sharing_service.dart';
 import 'package:geo_groups/my_groups_screen.dart';
 import 'package:geo_groups/profile_screen.dart';
+import 'package:geo_groups/service_availability.dart';
+import 'package:geo_groups/service_unavailable_screen.dart';
 import 'package:geo_groups/supabase_bootstrap.dart';
 import 'package:geo_groups/theme/app_theme.dart';
 
@@ -57,16 +59,21 @@ class _SupabaseStartupApp extends StatefulWidget {
 }
 
 class _SupabaseStartupAppState extends State<_SupabaseStartupApp> {
-  var _connecting = true;
-  SupabaseStartup? _startup;
+  late final ServiceAvailabilityController _availability;
 
   @override
   void initState() {
     super.initState();
-    _connect();
+    _availability = ServiceAvailabilityController(check: _openWhenReachable);
   }
 
-  Future<void> _connect() async {
+  @override
+  void dispose() {
+    _availability.dispose();
+    super.dispose();
+  }
+
+  Future<bool> _openWhenReachable() async {
     if (kDebugMode) {
       final config = supabaseConfigFromEnvironment();
       final host = Uri.tryParse(config.url)?.host ?? '';
@@ -78,79 +85,34 @@ class _SupabaseStartupAppState extends State<_SupabaseStartupApp> {
     if (kDebugMode) {
       debugPrint('bootstrap result: $result');
     }
-    if (!mounted) {
-      return;
-    }
     if (result != SupabaseStartup.ready) {
-      setState(() {
-        _connecting = false;
-        _startup = result;
-      });
-      return;
+      return false;
+    }
+    final reachable = await const SupabaseServiceAvailabilityCheck().check();
+    if (!reachable) {
+      return false;
     }
     try {
       final userId = Supabase.instance.client.auth.currentUser?.id;
       final groups = await groupRepositoryFor(result).loadMyGroups();
-      if (!mounted) {
-        return;
-      }
       publishLoadedGroups(result, groups, currentUserId: userId);
-      setState(() {
-        _connecting = false;
-        _startup = result;
-      });
     } catch (error, stack) {
+      if (isConnectivityFailure(error)) {
+        return false;
+      }
       if (kDebugMode) {
-        debugPrint('loadMyGroups failed: $error');
+        debugPrint('loadMyGroups failed: ${error.runtimeType}');
         debugPrintStack(stackTrace: stack);
       }
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _connecting = false;
-        _startup = SupabaseStartup.failed;
-      });
     }
-  }
-
-  void _retry() {
-    setState(() {
-      _connecting = true;
-      _startup = null;
-    });
-    _connect();
+    return true;
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_connecting) {
-      return MaterialApp(
-        theme: AppTheme.light(),
-        darkTheme: AppTheme.dark(),
-        themeMode: ThemeMode.system,
-        home: const Scaffold(body: Center(child: CircularProgressIndicator())),
-      );
-    }
-    if (_startup == SupabaseStartup.ready) {
-      return MyApp(locations: locationRepositoryFor(SupabaseStartup.ready));
-    }
-    return MaterialApp(
-      theme: AppTheme.light(),
-      darkTheme: AppTheme.dark(),
-      themeMode: ThemeMode.system,
-      home: Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('Не удалось подключиться'),
-              const SizedBox(height: 16),
-              FilledButton(onPressed: _retry, child: const Text('Повторить')),
-            ],
-          ),
-        ),
-      ),
+    return ServiceAvailabilityShell(
+      controller: _availability,
+      child: MyApp(locations: locationRepositoryFor(SupabaseStartup.ready)),
     );
   }
 }
