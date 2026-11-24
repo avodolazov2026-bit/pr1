@@ -1,6 +1,30 @@
 import 'package:flutter/material.dart';
 
 import 'package:geo_groups/geo_group.dart';
+import 'package:geo_groups/theme/app_theme.dart';
+
+ButtonStyle groupPeriodSegmentStyle(ColorScheme colorScheme) {
+  return ButtonStyle(
+    backgroundColor: WidgetStateProperty.resolveWith((states) {
+      if (states.contains(WidgetState.selected)) {
+        return colorScheme.primary;
+      }
+      return Colors.transparent;
+    }),
+    foregroundColor: WidgetStateProperty.resolveWith((states) {
+      if (states.contains(WidgetState.selected)) {
+        return colorScheme.onPrimary;
+      }
+      return colorScheme.onPrimaryContainer;
+    }),
+    side: const WidgetStatePropertyAll(BorderSide.none),
+    shape: const WidgetStatePropertyAll(
+      RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(Radius.circular(AppRadii.pill)),
+      ),
+    ),
+  );
+}
 
 /// Подписи экрана созданных групп. Сам отбор там по-прежнему смотрит назад.
 const createdGroupPeriodLabels = <GroupPeriod, String>{
@@ -34,38 +58,34 @@ class GroupPeriodSelector extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     return SizedBox(
       width: double.infinity,
-      child: SegmentedButton<GroupPeriod>(
-        showSelectedIcon: false,
-        segments: [
-          for (final value in GroupPeriod.values)
-            ButtonSegment(
-              value: value,
-              label: Text(
-                labels[value]!,
-                style: TextStyle(
-                  fontWeight: period == value
-                      ? FontWeight.w700
-                      : FontWeight.w400,
-                ),
-              ),
-            ),
-        ],
-        selected: {period},
-        style: ButtonStyle(
-          backgroundColor: WidgetStateProperty.resolveWith((states) {
-            if (states.contains(WidgetState.selected)) {
-              return colorScheme.primaryContainer;
-            }
-            return colorScheme.surface;
-          }),
-          foregroundColor: WidgetStateProperty.resolveWith((states) {
-            if (states.contains(WidgetState.selected)) {
-              return colorScheme.onPrimaryContainer;
-            }
-            return colorScheme.onSurfaceVariant;
-          }),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: colorScheme.primaryContainer,
+          borderRadius: BorderRadius.circular(AppRadii.pill),
         ),
-        onSelectionChanged: (selection) => onChanged(selection.first),
+        child: Padding(
+          padding: const EdgeInsets.all(3),
+          child: SegmentedButton<GroupPeriod>(
+            showSelectedIcon: false,
+            segments: [
+              for (final value in GroupPeriod.values)
+                ButtonSegment(
+                  value: value,
+                  label: Text(
+                    labels[value]!,
+                    style: TextStyle(
+                      fontWeight: period == value
+                          ? FontWeight.w700
+                          : FontWeight.w400,
+                    ),
+                  ),
+                ),
+            ],
+            selected: {period},
+            style: groupPeriodSegmentStyle(colorScheme),
+            onSelectionChanged: (selection) => onChanged(selection.first),
+          ),
+        ),
       ),
     );
   }

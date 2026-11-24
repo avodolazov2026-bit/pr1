@@ -1,53 +1,24 @@
 import 'package:geo_groups/geo_group.dart';
+import 'package:geo_groups/group_invitation_repository.dart';
 
-enum GroupInviteLinkKind { ignore, confirm, rejected }
-
-class GroupInviteLinkResolution {
-  const GroupInviteLinkResolution.ignore()
-    : kind = GroupInviteLinkKind.ignore,
-      group = null,
-      payload = null,
-      message = null;
-
-  const GroupInviteLinkResolution.confirm({
-    required GeoGroup this.group,
-    required this.payload,
-  }) : kind = GroupInviteLinkKind.confirm,
-       message = null;
-
-  const GroupInviteLinkResolution.rejected(this.message)
-    : kind = GroupInviteLinkKind.rejected,
-      group = null,
-      payload = null;
-
-  final GroupInviteLinkKind kind;
-  final GeoGroup? group;
-  final String? payload;
-  final String? message;
-
-  bool get opensConfirmation => kind == GroupInviteLinkKind.confirm;
+/// Токен из https://qunora.pro/invite/<64 hex>. Иначе null.
+String? groupInviteTokenFromUri(Uri uri) {
+  final parsed = parseGroupInvitePayload(uri.toString());
+  if (parsed == null || !isGroupInviteToken(parsed.inviteToken)) {
+    return null;
+  }
+  return parsed.inviteToken;
 }
 
-bool isGroupJoinLink(Uri uri) {
-  return uri.scheme == 'geo-groups' && uri.host == 'join';
-}
+bool isGroupJoinLink(Uri uri) => groupInviteTokenFromUri(uri) != null;
 
-/// Проверяет входящий URI, не меняя группы и приглашения.
-GroupInviteLinkResolution resolveGroupInviteLink(Uri uri) {
-  if (!isGroupJoinLink(uri)) {
-    return const GroupInviteLinkResolution.ignore();
+/// Адрес qunora.pro/invite/..., но токен не проходит ^[0-9a-f]{64}$.
+bool isMalformedGroupInviteLink(Uri uri) {
+  if (uri.scheme != 'https' || uri.host != 'qunora.pro') {
+    return false;
   }
-  final payload = uri.toString();
-  final inspection = GroupsStore.instance.inspectQrInvitation(payload);
-  final group = inspection.group;
-  final canConfirm =
-      group != null &&
-      (inspection.result == QrInviteClaimResult.added ||
-          inspection.result == QrInviteClaimResult.alreadyPending);
-  if (!canConfirm) {
-    return GroupInviteLinkResolution.rejected(
-      messageForQrInviteClaim(inspection.result),
-    );
+  if (uri.pathSegments.isEmpty || uri.pathSegments.first != 'invite') {
+    return false;
   }
-  return GroupInviteLinkResolution.confirm(group: group, payload: payload);
+  return groupInviteTokenFromUri(uri) == null;
 }

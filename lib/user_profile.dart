@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:geo_groups/geo_group.dart';
+import 'package:geo_groups/theme/app_theme.dart';
 
 class UserProfile {
   const UserProfile({
@@ -30,52 +31,52 @@ class ProfileAvatarOption {
 const profileAvatarOptions = <ProfileAvatarOption>[
   ProfileAvatarOption(
     id: defaultAvatarId,
-    color: Color(0xFF00796B),
+    color: AppColors.primary,
     icon: Icons.person,
   ),
   ProfileAvatarOption(
     id: 'blue_face',
-    color: Color(0xFF1565C0),
+    color: AppColors.tertiary,
     icon: Icons.face,
   ),
   ProfileAvatarOption(
     id: 'green_hiking',
-    color: Color(0xFF2E7D32),
+    color: AppColors.onPrimaryContainer,
     icon: Icons.hiking,
   ),
   ProfileAvatarOption(
     id: 'orange_bike',
-    color: Color(0xFFEF6C00),
+    color: AppColors.error,
     icon: Icons.directions_bike,
   ),
   ProfileAvatarOption(
     id: 'purple_pets',
-    color: Color(0xFF6A1B9A),
+    color: AppColors.primaryContainerDark,
     icon: Icons.pets,
   ),
   ProfileAvatarOption(
     id: 'amber_star',
-    color: Color(0xFFF57F17),
+    color: AppColors.errorContainerDark,
     icon: Icons.star,
   ),
   ProfileAvatarOption(
     id: 'red_favorite',
-    color: Color(0xFFC62828),
+    color: AppColors.onSurface,
     icon: Icons.favorite,
   ),
   ProfileAvatarOption(
     id: 'indigo_palette',
-    color: Color(0xFF283593),
+    color: AppColors.onSurfaceVariant,
     icon: Icons.palette,
   ),
   ProfileAvatarOption(
     id: 'brown_park',
-    color: Color(0xFF6D4C41),
+    color: AppColors.secondaryContainerDark,
     icon: Icons.park,
   ),
   ProfileAvatarOption(
     id: 'cyan_walk',
-    color: Color(0xFF00838F),
+    color: AppColors.onErrorContainer,
     icon: Icons.directions_walk,
   ),
 ];
@@ -107,11 +108,11 @@ class ProfileAvatar extends StatelessWidget {
     if (option == null) {
       return CircleAvatar(
         radius: radius,
-        backgroundColor: const Color(0xFF00796B),
+        backgroundColor: AppColors.primary,
         child: Text(
           memberInitials(displayName),
           style: TextStyle(
-            color: Colors.white,
+            color: Theme.of(context).colorScheme.onPrimary,
             fontSize: radius * 0.7,
             fontWeight: FontWeight.w600,
           ),
@@ -121,7 +122,11 @@ class ProfileAvatar extends StatelessWidget {
     return CircleAvatar(
       radius: radius,
       backgroundColor: option.color,
-      child: Icon(option.icon, color: Colors.white, size: radius),
+      child: Icon(
+        option.icon,
+        color: Theme.of(context).colorScheme.onPrimary,
+        size: radius,
+      ),
     );
   }
 }

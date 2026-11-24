@@ -5,20 +5,26 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:geo_groups/geo_group.dart';
 
 class QrInviteScreen extends StatelessWidget {
-  const QrInviteScreen({super.key, required this.group});
+  const QrInviteScreen({super.key, required this.group, this.inviteLink});
 
   final GeoGroup group;
+  final String? inviteLink;
+
+  String get _link => inviteLink ?? buildGroupInviteLink(group);
 
   bool get _canCopy {
     final saved = GroupsStore.instance.groupById(group.id);
+    final hasLink = inviteLink != null
+        ? inviteLink!.isNotEmpty
+        : group.qrInviteToken.isNotEmpty;
     return identical(saved, group) &&
         !group.isFinished &&
-        group.qrInviteToken.isNotEmpty &&
+        hasLink &&
         group.currentUserIsActiveOrganizer;
   }
 
   Future<void> _copyPayload(BuildContext context) async {
-    final payload = buildGroupInviteLink(group);
+    final payload = _link;
     try {
       await Clipboard.setData(ClipboardData(text: payload));
     } catch (_) {
@@ -49,25 +55,24 @@ class QrInviteScreen extends StatelessWidget {
             Center(
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: colorScheme.surface,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: colorScheme.outlineVariant),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: QrImageView(
-                    data: buildGroupInviteLink(group),
+                    data: _link,
                     version: QrVersions.auto,
                     size: qrSize,
-                    backgroundColor: Colors.white,
+                    backgroundColor: colorScheme.surface,
                     errorCorrectionLevel: QrErrorCorrectLevel.M,
-                    eyeStyle: const QrEyeStyle(
+                    eyeStyle: QrEyeStyle(
                       eyeShape: QrEyeShape.square,
-                      color: Colors.black,
+                      color: colorScheme.onSurface,
                     ),
-                    dataModuleStyle: const QrDataModuleStyle(
+                    dataModuleStyle: QrDataModuleStyle(
                       dataModuleShape: QrDataModuleShape.square,
-                      color: Colors.black,
+                      color: colorScheme.onSurface,
                     ),
                   ),
                 ),

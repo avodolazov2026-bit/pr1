@@ -464,8 +464,9 @@ void main() {
       ),
       findsNothing,
     );
-    expect(_pin(tester, 'Позиция организатора: Мария').color, Colors.purple);
-    expect(_pin(tester, 'Позиция участника: Алексей').color, Colors.blue);
+    final scheme = _mapScheme(tester);
+    expect(_pin(tester, 'Позиция организатора: Мария').color, scheme.tertiary);
+    expect(_pin(tester, 'Позиция участника: Алексей').color, scheme.secondary);
   });
 
   testWidgets('current user who organizes the group has one marker', (
@@ -494,8 +495,8 @@ void main() {
       findsNothing,
     );
     final pin = _pin(tester, 'Ваше местоположение, организатор');
-    expect(pin.color, const Color(0xFF00897B));
-    expect(_hasWhiteOutline(pin), isTrue);
+    expect(pin.color, _mapScheme(tester).primary);
+    expect(_hasSurfaceOutline(tester, pin), isTrue);
   });
 
   testWidgets('selecting the organizer keeps the organizer marker', (
@@ -526,11 +527,14 @@ void main() {
       findsOneWidget,
     );
     final pin = _pin(tester, 'Позиция организатора: Мария');
-    expect(pin.color, Colors.purple);
+    expect(pin.color, _mapScheme(tester).tertiary);
     expect(pin.size, 56);
     expect(pin.shadows?.any((shadow) => shadow.blurRadius > 0), isTrue);
-    expect(_hasWhiteOutline(pin), isTrue);
-    expect(_pin(tester, 'Позиция участника: Алексей').color, Colors.blue);
+    expect(_hasSurfaceOutline(tester, pin), isTrue);
+    expect(
+      _pin(tester, 'Позиция участника: Алексей').color,
+      _mapScheme(tester).secondary,
+    );
     expect(_pin(tester, 'Позиция участника: Алексей').size, 44);
   });
 
@@ -596,7 +600,10 @@ void main() {
     expect(_semantics('Позиция организатора: Мария'), findsOneWidget);
     expect(_semantics('Позиция участника: Алексей'), findsNothing);
     expect(find.byIcon(Icons.star), findsOneWidget);
-    expect(_pin(tester, 'Позиция организатора: Мария').color, Colors.purple);
+    expect(
+      _pin(tester, 'Позиция организатора: Мария').color,
+      _mapScheme(tester).tertiary,
+    );
   });
 
   testWidgets('current user who is not the organizer keeps their own marker', (
@@ -634,8 +641,8 @@ void main() {
     expect(_semantics('Ваше местоположение, организатор'), findsNothing);
     expect(find.byIcon(Icons.star), findsNothing);
     final pin = _pin(tester, 'Ваше местоположение');
-    expect(pin.color, const Color(0xFF00897B));
-    expect(_hasWhiteOutline(pin), isTrue);
+    expect(pin.color, _mapScheme(tester).primary);
+    expect(_hasSurfaceOutline(tester, pin), isTrue);
   });
 
   testWidgets('a device position shows the current user marker', (
@@ -677,8 +684,8 @@ void main() {
     expect(_semantics('Ваше местоположение'), findsOneWidget);
     expect(_semantics('Позиция участника: Мария'), findsOneWidget);
     final pin = _pin(tester, 'Ваше местоположение');
-    expect(pin.color, const Color(0xFF00897B));
-    expect(_hasWhiteOutline(pin), isTrue);
+    expect(pin.color, _mapScheme(tester).primary);
+    expect(_hasSurfaceOutline(tester, pin), isTrue);
     expect(find.byIcon(Icons.star), findsNothing);
     expect(
       _markerPoint(tester, 'Ваше местоположение'),
@@ -884,8 +891,8 @@ void main() {
 
     expect(device.requests, 0);
     final pin = _configuredPin(tester, 'Ваше местоположение');
-    expect(pin.color, const Color(0xFF00897B));
-    expect(_hasWhiteOutline(pin), isTrue);
+    expect(pin.color, _mapScheme(tester).primary);
+    expect(_hasSurfaceOutline(tester, pin), isTrue);
     expect(
       _markerPoint(tester, 'Ваше местоположение'),
       const LatLng(59.93, 30.31),
@@ -1465,8 +1472,15 @@ Icon _pin(WidgetTester tester, String label) {
   );
 }
 
-bool _hasWhiteOutline(Icon pin) {
-  return pin.shadows?.any((shadow) => shadow.color == Colors.white) ?? false;
+ColorScheme _mapScheme(WidgetTester tester) {
+  return Theme.of(tester.element(find.byType(GroupMapScreen))).colorScheme;
+}
+
+bool _hasSurfaceOutline(WidgetTester tester, Icon pin) {
+  return pin.shadows?.any(
+        (shadow) => shadow.color == _mapScheme(tester).surface,
+      ) ??
+      false;
 }
 
 LatLng _markerPoint(WidgetTester tester, String label) {

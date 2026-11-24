@@ -1,20 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:geo_groups/geo_group.dart';
-
-const activeGroupAccent = Color(0xFF1B7F3A);
-const upcomingGroupAccent = Color(0xFFD97706);
-const finishedGroupAccent = Color(0xFF9CA3AF);
-
-Color groupStatusAccent(GeoGroup group) {
-  if (group.isActive) {
-    return activeGroupAccent;
-  }
-  if (group.isUpcoming) {
-    return upcomingGroupAccent;
-  }
-  return finishedGroupAccent;
-}
+import 'package:geo_groups/theme/app_theme.dart';
 
 class GroupCard extends StatelessWidget {
   const GroupCard({
@@ -34,35 +21,35 @@ class GroupCard extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final participating = !group.currentUserHasLeft;
     final onInvite = this.onInvite;
+    final cardColor = colorScheme.brightness == Brightness.dark
+        ? colorScheme.surfaceContainerHighest
+        : AppColors.surfaceContainer;
+    const cardRadius = 18.0;
 
     return Opacity(
       opacity: group.isFinished ? 0.55 : 1,
-      child: Card(
-        clipBehavior: Clip.antiAlias,
-        child: Stack(
-          children: [
-            Positioned(
-              left: 0,
-              top: 0,
-              bottom: 0,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: groupStatusAccent(group),
-                  borderRadius: const BorderRadius.horizontal(
-                    left: Radius.circular(12),
-                  ),
-                ),
-                child: const SizedBox(width: 4),
-              ),
-            ),
-            Column(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: cardColor,
+          borderRadius: BorderRadius.circular(cardRadius),
+          boxShadow: AppTheme.cardShadows(colorScheme.brightness),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(cardRadius),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 InkWell(
                   onTap: onTap,
+                  borderRadius: BorderRadius.circular(cardRadius),
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 16, 16),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -83,38 +70,49 @@ class GroupCard extends StatelessWidget {
                         Text(group.scheduleSummary, style: textTheme.bodyLarge),
                         const SizedBox(height: 12),
                         Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Icon(
-                              participating ? Icons.check_circle : Icons.logout,
-                              size: 18,
-                              color: participating
-                                  ? colorScheme.primary
-                                  : colorScheme.onSurfaceVariant,
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                participating ? 'Участвую' : 'Покинул группу',
-                                overflow: TextOverflow.ellipsis,
-                                style: textTheme.bodyMedium?.copyWith(
-                                  color: participating
-                                      ? colorScheme.primary
-                                      : colorScheme.onSurfaceVariant,
-                                ),
+                            Flexible(
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    participating
+                                        ? Icons.check_circle
+                                        : Icons.logout,
+                                    size: 18,
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Flexible(
+                                    child: Text(
+                                      participating
+                                          ? 'Участвую'
+                                          : 'Покинул группу',
+                                      overflow: TextOverflow.ellipsis,
+                                      style: textTheme.bodySmall?.copyWith(
+                                        color: colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                             const SizedBox(width: 8),
-                            Icon(
-                              Icons.people_outline,
-                              size: 18,
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Участников: ${group.activeMemberCount}',
-                              style: textTheme.bodyMedium?.copyWith(
-                                color: colorScheme.onSurfaceVariant,
-                              ),
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.people_outline,
+                                  size: 18,
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'Участников: ${group.activeMemberCount}',
+                                  style: textTheme.bodySmall?.copyWith(
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
@@ -163,7 +161,6 @@ class GroupCard extends StatelessWidget {
                   ),
               ],
             ),
-          ],
         ),
       ),
     );
@@ -178,46 +175,53 @@ class _StatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final muted = (
+      colorScheme.surfaceContainerHighest,
+      colorScheme.onSurfaceVariant,
+    );
+    final active = group.statusBadge == 'Активна';
     final (background, foreground, icon) = switch (group.statusBadge) {
       'Активна' => (
-        const Color(0xFFE6F4EA),
-        activeGroupAccent,
+        colorScheme.secondary,
+        colorScheme.onSecondary,
         Icons.play_circle_outline,
       ),
       'Запланирована' => (
-        const Color(0xFFFEF3C7),
-        const Color(0xFFB45309),
+        muted.$1,
+        muted.$2,
         Icons.event_outlined,
       ),
       'Отменена' => (
-        const Color(0xFFF3F4F6),
-        const Color(0xFF4B5563),
+        muted.$1,
+        muted.$2,
         Icons.event_busy_outlined,
       ),
       'Завершена' || 'Истекла' => (
-        const Color(0xFFF3F4F6),
-        const Color(0xFF4B5563),
+        muted.$1,
+        muted.$2,
         Icons.history,
       ),
-      _ => (const Color(0xFFF3F4F6), const Color(0xFF4B5563), Icons.history),
+      _ => (muted.$1, muted.$2, Icons.history),
     };
 
     return DecoratedBox(
       decoration: BoxDecoration(
         color: background,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(active ? 100 : 8),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 16, color: foreground),
+            Icon(icon, size: active ? 13 : 16, color: foreground),
             const SizedBox(width: 4),
             Text(
               group.statusBadge,
               style: textTheme.labelMedium?.copyWith(
                 color: foreground,
+                fontSize: active ? 12 : null,
                 fontWeight: FontWeight.w600,
               ),
             ),

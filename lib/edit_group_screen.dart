@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:geo_groups/geo_group.dart';
+import 'package:geo_groups/group_invitation_repository.dart';
 import 'package:geo_groups/group_schedule_form.dart';
 import 'package:geo_groups/invite_source_sheet.dart';
 import 'package:geo_groups/user_profile.dart';
@@ -253,7 +254,11 @@ class _EditGroupScreenState extends State<EditGroupScreen> {
   }
 
   Future<void> _invitePeople() {
-    return showGroupInviteOptions(context: context, group: widget.group);
+    return showGroupInviteOptions(
+      context: context,
+      group: widget.group,
+      invitations: defaultGroupInvitationRepository(),
+    );
   }
 
   List<GroupMember> _membersToSave() {

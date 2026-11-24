@@ -6,12 +6,15 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geo_groups/auth_repository.dart';
 import 'package:geo_groups/foreground_location_sharing.dart';
 import 'package:geo_groups/geo_group.dart';
+import 'package:geo_groups/group_period.dart';
 import 'package:geo_groups/group_card.dart';
+import 'package:geo_groups/group_invitation_repository.dart';
 import 'package:geo_groups/group_repository.dart';
 import 'package:geo_groups/group_schedule_form.dart';
 import 'package:geo_groups/group_screen.dart';
 import 'package:geo_groups/invite_source_sheet.dart';
 import 'package:geo_groups/phone_auth_screen.dart';
+import 'package:geo_groups/theme/app_theme.dart';
 import 'package:geo_groups/user_profile.dart';
 
 class CreatedGroupsScreen extends StatefulWidget {
@@ -119,6 +122,9 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen>
       isScrollControlled: true,
       useSafeArea: true,
       showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
       builder: (context) => const _NewGroupSheet(),
     );
     if (draft == null || !mounted) {
@@ -180,7 +186,6 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen>
       startsAt: draft.startsAt,
       endsAt: draft.endsAt,
       createdByUserId: creatorId,
-      qrInviteToken: GroupsStore.instance.nextQrInviteToken(),
       members: membersForNewGroup(
         creatorId: creatorId,
         creatorName: profile.displayName,
@@ -272,62 +277,58 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen>
               padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
               child: SizedBox(
                 width: double.infinity,
-                child: SegmentedButton<GroupPeriod>(
-                  showSelectedIcon: false,
-                  segments: [
-                    ButtonSegment(
-                      value: GroupPeriod.week,
-                      label: Text(
-                        'Неделя',
-                        style: TextStyle(
-                          fontWeight: _period == GroupPeriod.week
-                              ? FontWeight.w700
-                              : FontWeight.w400,
-                        ),
-                      ),
-                    ),
-                    ButtonSegment(
-                      value: GroupPeriod.month,
-                      label: Text(
-                        'Месяц',
-                        style: TextStyle(
-                          fontWeight: _period == GroupPeriod.month
-                              ? FontWeight.w700
-                              : FontWeight.w400,
-                        ),
-                      ),
-                    ),
-                    ButtonSegment(
-                      value: GroupPeriod.year,
-                      label: Text(
-                        'Год',
-                        style: TextStyle(
-                          fontWeight: _period == GroupPeriod.year
-                              ? FontWeight.w700
-                              : FontWeight.w400,
-                        ),
-                      ),
-                    ),
-                  ],
-                  selected: {_period},
-                  style: ButtonStyle(
-                    backgroundColor: WidgetStateProperty.resolveWith((states) {
-                      if (states.contains(WidgetState.selected)) {
-                        return colorScheme.primaryContainer;
-                      }
-                      return colorScheme.surface;
-                    }),
-                    foregroundColor: WidgetStateProperty.resolveWith((states) {
-                      if (states.contains(WidgetState.selected)) {
-                        return colorScheme.onPrimaryContainer;
-                      }
-                      return colorScheme.onSurfaceVariant;
-                    }),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(100),
                   ),
-                  onSelectionChanged: (selection) {
-                    setState(() => _period = selection.first);
-                    _scheduleStatusRefresh();
-                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(3),
+                    child: SegmentedButton<GroupPeriod>(
+                      showSelectedIcon: false,
+                      segments: [
+                        ButtonSegment(
+                          value: GroupPeriod.week,
+                          label: Text(
+                            'Неделя',
+                            style: TextStyle(
+                              fontWeight: _period == GroupPeriod.week
+                                  ? FontWeight.w700
+                                  : FontWeight.w400,
+                            ),
+                          ),
+                        ),
+                        ButtonSegment(
+                          value: GroupPeriod.month,
+                          label: Text(
+                            'Месяц',
+                            style: TextStyle(
+                              fontWeight: _period == GroupPeriod.month
+                                  ? FontWeight.w700
+                                  : FontWeight.w400,
+                            ),
+                          ),
+                        ),
+                        ButtonSegment(
+                          value: GroupPeriod.year,
+                          label: Text(
+                            'Год',
+                            style: TextStyle(
+                              fontWeight: _period == GroupPeriod.year
+                                  ? FontWeight.w700
+                                  : FontWeight.w400,
+                            ),
+                          ),
+                        ),
+                      ],
+                      selected: {_period},
+                      style: groupPeriodSegmentStyle(colorScheme),
+                      onSelectionChanged: (selection) {
+                        setState(() => _period = selection.first);
+                        _scheduleStatusRefresh();
+                      },
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -370,8 +371,7 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen>
                         final group = groups[index - 1];
                         final canInvite =
                             group.currentUserIsActiveOrganizer &&
-                            !group.isFinished &&
-                            group.qrInviteToken.isNotEmpty;
+                            !group.isFinished;
                         return GroupCard(
                           group: group,
                           onTap: () => _openGroup(group),
@@ -380,6 +380,8 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen>
                                   showGroupInviteOptions(
                                     context: context,
                                     group: group,
+                                    invitations:
+                                        defaultGroupInvitationRepository(),
                                   );
                                 }
                               : null,
@@ -547,10 +549,6 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
     final colorScheme = Theme.of(context).colorScheme;
     final endsAt = _endsAt;
     final issue = _formIssue();
-    final startInvalid =
-        issue?.field == GroupScheduleField.start && issue!.highlightFields;
-    final endInvalid =
-        issue?.field == GroupScheduleField.end && issue!.highlightFields;
 
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
@@ -575,17 +573,16 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 16),
-            ScheduleOutlinedButton(
+            AppTonalButton(
               onPressed: _pickStart,
               icon: Icons.event_outlined,
               label: 'Начало: ${formatGroupDateTime(_startsAt)}',
-              invalid: startInvalid,
             ),
             if (issue?.field == GroupScheduleField.start) ...[
               const SizedBox(height: 8),
-              ScheduleIssueText(issue!.message),
+              _ScheduleError(issue!.message),
             ],
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Text(
               'Начнётся ${formatGroupDateTime(_startsAt)}',
               style: textTheme.bodyMedium?.copyWith(
@@ -597,10 +594,21 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
               contentPadding: EdgeInsets.zero,
               controlAffinity: ListTileControlAffinity.leading,
               value: _indefinite,
+              side: BorderSide(
+                color: _indefinite ? colorScheme.primary : colorScheme.outline,
+              ),
+              fillColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.selected)) {
+                  return colorScheme.primary;
+                }
+                return Colors.transparent;
+              }),
+              checkColor: colorScheme.onPrimary,
               title: const Text('Бессрочная группа'),
               subtitle: Text(
                 'Группа не завершится автоматически по времени',
                 style: textTheme.bodySmall?.copyWith(
+                  fontSize: 13,
                   color: colorScheme.onSurfaceVariant,
                 ),
               ),
@@ -608,18 +616,18 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
                 setState(() => _indefinite = value ?? false);
               },
             ),
-            const SizedBox(height: 4),
-            ScheduleOutlinedButton(
+            const SizedBox(height: 10),
+            AppTonalButton(
               onPressed: _indefinite ? null : _pickEnd,
               icon: Icons.event_outlined,
               label: endsAt == null
                   ? 'Окончание группы'
                   : 'Окончание: ${formatGroupDateTime(endsAt)}',
-              invalid: endInvalid,
+              placeholder: endsAt == null && !_indefinite,
             ),
             if (issue?.field == GroupScheduleField.end) ...[
               const SizedBox(height: 8),
-              ScheduleIssueText(issue!.message),
+              _ScheduleError(issue!.message),
             ] else if (!_indefinite && endsAt != null) ...[
               const SizedBox(height: 8),
               Text(
@@ -643,8 +651,11 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
             Row(
               children: [
                 Expanded(
-                  child: OutlinedButton(
+                  child: TextButton(
                     onPressed: () => Navigator.of(context).pop(),
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size.fromHeight(52),
+                    ),
                     child: const Text('Отмена'),
                   ),
                 ),
@@ -659,10 +670,48 @@ class _NewGroupSheetState extends State<_NewGroupSheet> {
             ),
             if (issue != null) ...[
               const SizedBox(height: 8),
-              ScheduleIssueText(issue.message, small: true),
+              _ScheduleError(issue.message),
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ScheduleError extends StatelessWidget {
+  const _ScheduleError(this.message);
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: colorScheme.errorContainer,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.error_outline,
+            size: 16,
+            color: colorScheme.onErrorContainer,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                fontSize: 13,
+                color: colorScheme.onErrorContainer,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

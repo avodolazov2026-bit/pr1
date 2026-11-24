@@ -51,12 +51,13 @@ void main() {
       token: 'token-walk',
     );
     final link = buildGroupInviteLink(group);
-    expect(link, 'geo-groups://join?groupId=walk&inviteToken=token-walk');
+    expect(link, 'https://qunora.pro/invite/token-walk');
+    expect(link.contains('groupId='), isFalse);
+    expect(link.contains('geo-groups'), isFalse);
     expect(buildGroupInvitePayload(group), link);
     final parsed = parseGroupInvitePayload(link);
     expect(parsed, isNotNull);
-    expect(parsed!.groupId, group.id);
-    expect(parsed.inviteToken, group.qrInviteToken);
+    expect(parsed!.inviteToken, group.qrInviteToken);
     expect(group.qrInviteToken, 'token-walk');
 
     group.updateDetails(
@@ -120,7 +121,7 @@ void main() {
       group.members.any((member) => member.id == 'anna-smirnova'),
       isFalse,
     );
-    expect(group.qrInviteToken, 'qr-switch-check');
+    expect(group.qrInviteToken, isEmpty);
   });
 
   test('demo groups keep a default token without resetting members', () {
@@ -132,7 +133,7 @@ void main() {
       endsAt: DateTime.now().add(const Duration(hours: 3)),
       members: [GroupMember(id: 'maria', name: 'Мария')],
     );
-    expect(group.qrInviteToken, 'qr-picnic');
+    expect(group.qrInviteToken, isEmpty);
     expect(group.members.single.name, 'Мария');
   });
 
@@ -196,8 +197,8 @@ void main() {
     expect(find.text('Скопировать код приглашения'), findsOneWidget);
     expect(find.byType(QrImageView), findsOneWidget);
     final payload = buildGroupInviteLink(group);
-    expect(payload, contains('groupId=active-qr'));
-    expect(payload, contains('inviteToken=token-1'));
+    expect(payload, 'https://qunora.pro/invite/token-1');
+    expect(payload.contains('groupId='), isFalse);
     expect(payload.contains('Мария'), isFalse);
 
     String? copied;
@@ -376,10 +377,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(shared, hasLength(1));
-    expect(shared.single.subject, 'Приглашение в Geo Groups');
+    expect(shared.single.subject, 'Приглашение в Qunora');
     expect(
       shared.single.text,
-      'Присоединяйтесь к группе «Прогулка» в Geo Groups:\n'
+      'Присоединяйтесь к группе «Прогулка» в Qunora:\n'
       '${buildGroupInviteLink(active)}',
     );
     expect(find.text('Пригласить участников'), findsNothing);

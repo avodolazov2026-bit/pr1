@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:geo_groups/created_groups_screen.dart';
 import 'package:geo_groups/geo_group.dart';
+import 'package:geo_groups/theme/app_theme.dart';
 
 void main() {
   setUp(() {
@@ -192,8 +193,8 @@ void main() {
     await tester.tap(find.text('Бессрочная группа'));
     await tester.pump();
 
-    final button = tester.widget<OutlinedButton>(
-      find.widgetWithText(OutlinedButton, 'Окончание группы'),
+    final button = tester.widget<AppTonalButton>(
+      find.widgetWithText(AppTonalButton, 'Окончание группы'),
     );
     expect(button.onPressed, isNull);
   });

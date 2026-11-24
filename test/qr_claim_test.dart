@@ -78,7 +78,7 @@ void main() {
     );
     final payload = buildGroupInvitePayload(group);
     final parsed = parseGroupInvitePayload('  $payload  ');
-    expect(parsed?.groupId, 'walk id');
+    expect(payload, 'https://qunora.pro/invite/token%20value');
     expect(parsed?.inviteToken, 'token value');
     expect(payload.contains('Сергей'), isFalse);
     expect(payload.contains('120'), isFalse);
@@ -171,7 +171,7 @@ void main() {
     );
     expect(
       store.claimQrInvitation(
-        'geo-groups://join?groupId=missing-group&inviteToken=real-token',
+        'https://qunora.pro/invite/missing-token',
       ),
       QrInviteClaimResult.unavailable,
     );
@@ -180,7 +180,7 @@ void main() {
         buildGroupInvitePayload(group)
             .replaceFirst('real-token', 'other-token'),
       ),
-      QrInviteClaimResult.invalidToken,
+      QrInviteClaimResult.unavailable,
     );
     expect(
       store.claimQrInvitation(buildGroupInvitePayload(inactive)),

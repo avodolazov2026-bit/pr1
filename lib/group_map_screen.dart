@@ -581,16 +581,20 @@ class _MemberMapState extends State<_MemberMap> {
                   alignment: Alignment.bottomCenter,
                   child: Icon(
                     Icons.location_on,
-                    color: _pinColor(item.member),
+                    color: _pinColor(
+                      item.member,
+                      Theme.of(context).colorScheme,
+                    ),
                     size: iconSize,
                     shadows: _pinShadows(
+                      scheme: Theme.of(context).colorScheme,
                       outlined: currentUser || selected,
                       selected: selected,
                     ),
                   ),
                 ),
                 if (organizer)
-                  const Positioned(top: 0, right: 0, child: _OrganizerBadge()),
+                  Positioned(top: 0, right: 0, child: _OrganizerBadge()),
               ],
             ),
           ),
@@ -667,17 +671,21 @@ String _markerLabel(GroupMember member) {
   return 'Позиция участника: ${member.name}';
 }
 
-Color _pinColor(GroupMember member) {
+Color _pinColor(GroupMember member, ColorScheme scheme) {
   if (member.isCurrentUser) {
-    return const Color(0xFF00897B);
+    return scheme.primary;
   }
   if (member.role == MemberRole.organizer) {
-    return Colors.purple;
+    return scheme.tertiary;
   }
-  return Colors.blue;
+  return scheme.secondary;
 }
 
-List<Shadow> _pinShadows({required bool outlined, required bool selected}) {
+List<Shadow> _pinShadows({
+  required ColorScheme scheme,
+  required bool outlined,
+  required bool selected,
+}) {
   const spread = 1.4;
   return [
     if (outlined) ...[
@@ -691,13 +699,13 @@ List<Shadow> _pinShadows({required bool outlined, required bool selected}) {
         Offset(-spread, spread),
         Offset(spread, spread),
       ])
-        Shadow(color: Colors.white, offset: offset),
+        Shadow(color: scheme.surface, offset: offset),
     ],
     if (selected)
-      const Shadow(
-        color: Color(0x8A000000),
+      Shadow(
+        color: scheme.onSurface.withValues(alpha: 0.54),
         blurRadius: 6,
-        offset: Offset(0, 2),
+        offset: const Offset(0, 2),
       ),
   ];
 }
@@ -707,17 +715,18 @@ class _OrganizerBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const DecoratedBox(
+    final colorScheme = Theme.of(context).colorScheme;
+    return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.purple,
+        color: colorScheme.tertiary,
         shape: BoxShape.circle,
         border: Border.fromBorderSide(
-          BorderSide(color: Colors.white, width: 1.5),
+          BorderSide(color: colorScheme.surface, width: 1.5),
         ),
       ),
       child: Padding(
-        padding: EdgeInsets.all(2),
-        child: Icon(Icons.star, size: 12, color: Colors.white),
+        padding: const EdgeInsets.all(2),
+        child: Icon(Icons.star, size: 12, color: colorScheme.onTertiary),
       ),
     );
   }

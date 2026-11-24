@@ -348,8 +348,8 @@ class _AvatarChoice extends StatelessWidget {
                   Align(
                     alignment: Alignment.bottomRight,
                     child: DecoratedBox(
-                      decoration: const BoxDecoration(
-                        color: Colors.white,
+                      decoration: BoxDecoration(
+                        color: colorScheme.surface,
                         shape: BoxShape.circle,
                       ),
                       child: Icon(

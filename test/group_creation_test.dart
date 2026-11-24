@@ -211,8 +211,11 @@ void main() {
         matching: find.byIcon(Icons.location_on),
       ),
     );
-    expect(pin.color, const Color(0xFF00897B));
-    expect(pin.shadows?.any((shadow) => shadow.color == Colors.white), isTrue);
+    final scheme = Theme.of(
+      tester.element(find.byType(GroupMapScreen)),
+    ).colorScheme;
+    expect(pin.color, scheme.primary);
+    expect(pin.shadows?.any((shadow) => shadow.color == scheme.surface), isTrue);
     expect(find.byIcon(Icons.location_on), findsOneWidget);
   });
 
@@ -258,19 +261,6 @@ void main() {
       ),
     );
     expect(find.text('Пригласить в группу'), findsOneWidget);
-    final accent = tester.getRect(
-      find.byWidgetPredicate((widget) {
-        final decoration = widget is DecoratedBox ? widget.decoration : null;
-        return decoration is BoxDecoration &&
-            decoration.color == activeGroupAccent;
-      }),
-    );
-    final invite = tester.getRect(
-      find.widgetWithText(OutlinedButton, 'Пригласить в группу'),
-    );
-    expect(accent.width, 4);
-    expect(accent.top, lessThanOrEqualTo(invite.top));
-    expect(accent.bottom, greaterThanOrEqualTo(invite.bottom));
 
     await tester.tap(find.text('Пригласить в группу'));
     await tester.pump();
@@ -283,50 +273,41 @@ void main() {
     expect(invited, 1);
   });
 
-  testWidgets('created groups show invite only for an open organizer group', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(800, 2000);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-
+  testWidgets('an open organizer group shows invite', (tester) async {
     final now = DateTime.now();
-    GroupsStore.instance
-      ..addGroup(
-        _createdGroup(
-          id: 'invite-active',
-          name: 'Активная организатора',
-          startsAt: now.subtract(const Duration(hours: 1)),
-          endsAt: now.add(const Duration(hours: 2)),
-        ),
-      )
-      ..addGroup(
-        _createdGroup(
-          id: 'invite-upcoming',
-          name: 'Будущая организатора',
-          startsAt: now.add(const Duration(hours: 2)),
-          endsAt: now.add(const Duration(hours: 4)),
-        ),
-      )
-      ..addGroup(
-        _createdGroup(
-          id: 'invite-finished',
-          name: 'Завершённая организатора',
-          startsAt: now.subtract(const Duration(days: 2)),
-          endsAt: now.subtract(const Duration(hours: 1)),
-        ),
-      )
-      ..addGroup(
-        _createdGroup(
-          id: 'invite-participant',
-          name: 'Группа участника',
-          startsAt: now.subtract(const Duration(hours: 1)),
-          endsAt: now.add(const Duration(hours: 2)),
-          role: MemberRole.participant,
-        ),
-      )
-      ..addGroup(
+    await _showCreatedGroups(tester, [
+      _createdGroup(
+        id: 'invite-active',
+        name: 'Активная организатора',
+        startsAt: now.subtract(const Duration(hours: 1)),
+        endsAt: now.add(const Duration(hours: 2)),
+      ),
+    ]);
+
+    expect(find.text('Активная организатора'), findsOneWidget);
+    expect(_inviteOn('Активная организатора'), findsOneWidget);
+  });
+
+  testWidgets('a planned organizer group shows invite', (tester) async {
+    final now = DateTime.now();
+    await _showCreatedGroups(tester, [
+      _createdGroup(
+        id: 'invite-upcoming',
+        name: 'Будущая организатора',
+        startsAt: now.add(const Duration(hours: 2)),
+        endsAt: now.add(const Duration(hours: 4)),
+      ),
+    ]);
+
+    expect(find.text('Будущая организатора'), findsOneWidget);
+    expect(_inviteOn('Будущая организатора'), findsOneWidget);
+  });
+
+  testWidgets(
+    'an organizer group without a link still shows invite',
+    (tester) async {
+      final now = DateTime.now();
+      await _showCreatedGroups(tester, [
         _createdGroup(
           id: 'invite-no-token',
           name: 'Без ссылки',
@@ -334,16 +315,63 @@ void main() {
           endsAt: now.add(const Duration(hours: 2)),
           qrInviteToken: '',
         ),
-      );
+      ]);
 
-    await tester.pumpWidget(const MaterialApp(home: CreatedGroupsScreen()));
-    await tester.pumpAndSettle();
+      expect(find.text('Без ссылки'), findsOneWidget);
+      expect(_inviteOn('Без ссылки'), findsOneWidget);
+    },
+  );
 
-    expect(_inviteOn('Активная организатора'), findsOneWidget);
-    expect(_inviteOn('Будущая организатора'), findsOneWidget);
+  testWidgets('a finished organizer group does not show invite', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    await _showCreatedGroups(tester, [
+      _createdGroup(
+        id: 'invite-finished',
+        name: 'Завершённая организатора',
+        startsAt: now.subtract(const Duration(days: 2)),
+        endsAt: now.subtract(const Duration(hours: 1)),
+      ),
+    ]);
+
+    expect(find.text('Завершённая организатора'), findsOneWidget);
     expect(_inviteOn('Завершённая организатора'), findsNothing);
+  });
+
+  testWidgets('a group closed by the organizer does not show invite', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    final group = _createdGroup(
+      id: 'invite-closed',
+      name: 'Закрытая организатором',
+      startsAt: now.subtract(const Duration(hours: 1)),
+      endsAt: now.add(const Duration(hours: 2)),
+    );
+    group.endedByOrganizer = true;
+    await _showCreatedGroups(tester, [group]);
+
+    expect(find.text('Закрытая организатором'), findsOneWidget);
+    expect(_inviteOn('Закрытая организатором'), findsNothing);
+  });
+
+  testWidgets('a group where the user is not the organizer does not show invite', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    await _showCreatedGroups(tester, [
+      _createdGroup(
+        id: 'invite-participant',
+        name: 'Группа участника',
+        startsAt: now.subtract(const Duration(hours: 1)),
+        endsAt: now.add(const Duration(hours: 2)),
+        role: MemberRole.participant,
+      ),
+    ]);
+
+    expect(find.text('Группа участника'), findsOneWidget);
     expect(_inviteOn('Группа участника'), findsNothing);
-    expect(_inviteOn('Без ссылки'), findsNothing);
   });
 
   testWidgets('an anonymous account is asked to sign in before the form', (
@@ -470,6 +498,21 @@ GeoGroup _createdGroup({
       ),
     ],
   );
+}
+
+Future<void> _showCreatedGroups(
+  WidgetTester tester,
+  List<GeoGroup> groups,
+) async {
+  tester.view.physicalSize = const Size(800, 2000);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+  for (final group in groups) {
+    GroupsStore.instance.addGroup(group);
+  }
+  await tester.pumpWidget(const MaterialApp(home: CreatedGroupsScreen()));
+  await tester.pumpAndSettle();
 }
 
 Finder _inviteOn(String groupName) {

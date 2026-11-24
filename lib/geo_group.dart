@@ -118,14 +118,14 @@ class GeoGroup {
     this.createdByUserId,
     List<GroupMemberLocation> memberLocations = const [],
     String? qrInviteToken,
-  }) : qrInviteToken = qrInviteToken ?? 'qr-$id',
+  }) : qrInviteToken = qrInviteToken ?? '',
        _memberLocations = _memberLocationsFor(members, memberLocations);
 
   final String id;
   String name;
   final DateTime createdAt;
 
-  /// Локальный токен QR-приглашения. Создаётся один раз и не меняется при редактировании.
+  /// Токен локальной проверки вставленного приглашения. Клиент его для ссылки не создаёт.
   final String qrInviteToken;
 
   /// Начало группы. Меняется только пока группа запланирована, поэтому поле не final.
@@ -378,9 +378,6 @@ class GroupsStore {
     return '$prefix-$_sequence';
   }
 
-  /// Уникальный токен QR для новой группы. Повторно при редактировании не вызывается.
-  String nextQrInviteToken() => nextId('qr');
-
   void addGroup(GeoGroup group) {
     groups.insert(0, group);
   }
@@ -475,7 +472,13 @@ class GroupsStore {
     if (parsed == null) {
       return const QrInviteInspection(QrInviteClaimResult.unrecognized);
     }
-    final group = groupById(parsed.groupId);
+    GeoGroup? group;
+    for (final candidate in groups) {
+      if (candidate.qrInviteToken == parsed.inviteToken) {
+        group = candidate;
+        break;
+      }
+    }
     if (group == null) {
       return const QrInviteInspection(QrInviteClaimResult.unavailable);
     }
@@ -799,11 +802,17 @@ int compareFinishedGroups(GeoGroup a, GeoGroup b) =>
 DateTime _finishedSortKey(GeoGroup group) =>
     group.endedAt ?? group.endsAt ?? group.startsAt;
 
-/// Локальная схема приглашения. Позже её можно заменить на HTTPS-ссылку.
+/// Универсальная ссылка приглашения. groupId в адрес не входит.
+String groupInviteUrl(String token) {
+  return Uri(
+    scheme: 'https',
+    host: 'qunora.pro',
+    pathSegments: ['invite', token],
+  ).toString();
+}
+
 String buildGroupInviteLink(GeoGroup group) {
-  return 'geo-groups://join'
-      '?groupId=${Uri.encodeQueryComponent(group.id)}'
-      '&inviteToken=${Uri.encodeQueryComponent(group.qrInviteToken)}';
+  return groupInviteUrl(group.qrInviteToken);
 }
 
 /// @deprecated Используйте buildGroupInviteLink.
@@ -812,9 +821,8 @@ String buildGroupInvitePayload(GeoGroup group) {
 }
 
 class GroupInvitePayload {
-  const GroupInvitePayload({required this.groupId, required this.inviteToken});
+  const GroupInvitePayload({required this.inviteToken});
 
-  final String groupId;
   final String inviteToken;
 }
 
@@ -852,27 +860,23 @@ String messageForQrInviteClaim(QrInviteClaimResult result) {
   };
 }
 
-/// Разбирает строку, которую создаёт [buildGroupInviteLink].
+/// Разбирает универсальную ссылку приглашения qunora.pro/invite.
 GroupInvitePayload? parseGroupInvitePayload(String rawPayload) {
   final uri = Uri.tryParse(rawPayload.trim());
-  if (uri == null || uri.scheme != 'geo-groups' || uri.host != 'join') {
+  if (uri == null || uri.scheme != 'https' || uri.host != 'qunora.pro') {
     return null;
   }
-  if (uri.path.isNotEmpty && uri.path != '/') {
+  if (uri.hasQuery || uri.fragment.isNotEmpty) {
     return null;
   }
-  if (uri.fragment.isNotEmpty || uri.queryParameters.length != 2) {
+  if (uri.pathSegments.length != 2 || uri.pathSegments.first != 'invite') {
     return null;
   }
-  final groupId = uri.queryParameters['groupId'];
-  final inviteToken = uri.queryParameters['inviteToken'];
-  if (groupId == null ||
-      groupId.isEmpty ||
-      inviteToken == null ||
-      inviteToken.isEmpty) {
+  final token = uri.pathSegments[1];
+  if (token.isEmpty) {
     return null;
   }
-  return GroupInvitePayload(groupId: groupId, inviteToken: inviteToken);
+  return GroupInvitePayload(inviteToken: token);
 }
 
 String memberInitials(String name) {

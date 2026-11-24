@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:geo_groups/geo_group.dart';
+import 'package:geo_groups/group_invitation_repository.dart';
 import 'package:geo_groups/qr_invite_screen.dart';
 
 enum _InviteChannel { qrCode, shareLink }
@@ -22,12 +24,16 @@ Future<void> showGroupInviteOptions({
   required BuildContext context,
   GeoGroup? group,
   ShareGroupInvite? shareInvite,
+  GroupInvitationRepository? invitations,
 }) async {
   final channel = await showModalBottomSheet<_InviteChannel>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
     showDragHandle: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+    ),
     builder: (context) => _InviteSourceSheet(group: group),
   );
   if (channel == null || !context.mounted) {
@@ -36,7 +42,8 @@ Future<void> showGroupInviteOptions({
 
   switch (channel) {
     case _InviteChannel.qrCode:
-      if (group == null || group.qrInviteToken.isEmpty) {
+      if (group == null ||
+          (invitations == null && group.qrInviteToken.isEmpty)) {
         await _showNotice(
           context,
           title: 'QR-код группы',
@@ -56,9 +63,17 @@ Future<void> showGroupInviteOptions({
       if (!group.currentUserIsActiveOrganizer || !context.mounted) {
         return;
       }
+      final link = await _inviteLink(
+        context,
+        group: group,
+        invitations: invitations,
+      );
+      if (link == null || !context.mounted) {
+        return;
+      }
       await Navigator.of(context).push<void>(
         MaterialPageRoute<void>(
-          builder: (context) => QrInviteScreen(group: group),
+          builder: (context) => QrInviteScreen(group: group, inviteLink: link),
         ),
       );
       return;
@@ -83,18 +98,58 @@ Future<void> showGroupInviteOptions({
       if (!group.currentUserIsActiveOrganizer || !context.mounted) {
         return;
       }
+      final link = await _inviteLink(
+        context,
+        group: group,
+        invitations: invitations,
+      );
+      if (link == null || !context.mounted) {
+        return;
+      }
       final share = shareInvite ?? shareGroupInvite;
       await share(
-        text: _inviteShareText(group),
-        subject: 'Приглашение в Geo Groups',
+        text: _inviteShareText(group, link),
+        subject: 'Приглашение в Qunora',
       );
       return;
   }
 }
 
-String _inviteShareText(GeoGroup group) {
-  return 'Присоединяйтесь к группе «${group.name}» в Geo Groups:\n'
-      '${buildGroupInviteLink(group)}';
+Future<String?> _inviteLink(
+  BuildContext context, {
+  required GeoGroup group,
+  required GroupInvitationRepository? invitations,
+}) async {
+  if (invitations == null) {
+    if (group.qrInviteToken.isEmpty) {
+      return null;
+    }
+    return buildGroupInviteLink(group);
+  }
+  try {
+    final created = await invitations.createOrGet(group.id);
+    final token = created?.inviteToken;
+    if (token == null || !isGroupInviteToken(token)) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Приглашение недоступно')),
+        );
+      }
+      return null;
+    }
+    return groupInviteUrl(token);
+  } on PostgrestException catch (error) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    }
+    return null;
+  }
+}
+
+String _inviteShareText(GeoGroup group, String link) {
+  return 'Присоединяйтесь к группе «${group.name}» в Qunora:\n$link';
 }
 
 Future<void> _showNotice(

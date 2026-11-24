@@ -19,27 +19,9 @@ import 'package:geo_groups/location_sharing_service.dart';
 import 'package:geo_groups/my_groups_screen.dart';
 import 'package:geo_groups/profile_screen.dart';
 import 'package:geo_groups/supabase_bootstrap.dart';
+import 'package:geo_groups/theme/app_theme.dart';
 
 final appNavigatorKey = GlobalKey<NavigatorState>();
-
-/// Основной фон светлой темы.
-const appBackgroundColor = Color(0xFFFAF7F0);
-
-final appLightTheme = ThemeData(
-  colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
-  useMaterial3: true,
-  scaffoldBackgroundColor: appBackgroundColor,
-  canvasColor: appBackgroundColor,
-  cardTheme: const CardThemeData(color: Colors.white),
-  bottomSheetTheme: const BottomSheetThemeData(
-    backgroundColor: appBackgroundColor,
-  ),
-  dialogTheme: const DialogThemeData(backgroundColor: appBackgroundColor),
-  inputDecorationTheme: const InputDecorationTheme(
-    filled: true,
-    fillColor: Colors.white,
-  ),
-);
 
 void main() {
   if (!supabaseConfigFromEnvironment().isConfigured) {
@@ -144,7 +126,9 @@ class _SupabaseStartupAppState extends State<_SupabaseStartupApp> {
   Widget build(BuildContext context) {
     if (_connecting) {
       return MaterialApp(
-        theme: appLightTheme,
+        theme: AppTheme.light(),
+        darkTheme: AppTheme.dark(),
+        themeMode: ThemeMode.system,
         home: const Scaffold(body: Center(child: CircularProgressIndicator())),
       );
     }
@@ -152,7 +136,9 @@ class _SupabaseStartupAppState extends State<_SupabaseStartupApp> {
       return MyApp(locations: locationRepositoryFor(SupabaseStartup.ready));
     }
     return MaterialApp(
-      theme: appLightTheme,
+      theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
+      themeMode: ThemeMode.system,
       home: Scaffold(
         body: Center(
           child: Column(
@@ -173,10 +159,12 @@ class MyApp extends StatefulWidget {
   const MyApp({
     super.key,
     this.inviteLinks,
+    this.invitations,
     this.locations = const LocalLocationRepository(),
   });
 
   final InviteLinkSource? inviteLinks;
+  final GroupInvitationRepository? invitations;
   final LocationRepository locations;
 
   @override
@@ -238,56 +226,73 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _openInviteLink(Uri uri) async {
-    final resolution = resolveGroupInviteLink(uri);
-    final navigator = appNavigatorKey.currentState;
-    final context = navigator?.overlay?.context;
-    if (!mounted || navigator == null || context == null || !context.mounted) {
+    if (!mounted || appNavigatorKey.currentState == null) {
       return;
     }
-    if (_openInvitePayload != null && isGroupJoinLink(uri)) {
+    final token = groupInviteTokenFromUri(uri);
+    if (token == null) {
+      if (isMalformedGroupInviteLink(uri)) {
+        _showInviteMessage('Не удалось распознать приглашение');
+      }
       return;
     }
-    final message = resolution.message;
-    if (resolution.kind == GroupInviteLinkKind.rejected && message != null) {
-      final messenger = ScaffoldMessenger.of(context);
-      messenger.clearSnackBars();
-      messenger.showSnackBar(SnackBar(content: Text(message)));
+    if (_openInvitePayload != null) {
       return;
     }
-    final group = resolution.group;
-    final payload = resolution.payload;
-    if (!resolution.opensConfirmation || group == null || payload == null) {
-      return;
-    }
-    _openInvitePayload = payload;
+    _openInvitePayload = token;
+    final repository =
+        widget.invitations ?? defaultGroupInvitationRepository();
     try {
-      await openJoinGroupConfirmation(
-        context: context,
-        group: group,
-        onJoin: (name, avatarId) {
-          return Future.value(
-            GroupsStore.instance.joinFromQrPayload(
-              payload,
-              displayName: name,
-              avatarId: avatarId,
-            ),
-          );
-        },
-      );
+      final resolved = await repository.resolve(token);
+      if (!mounted) {
+        return;
+      }
+      if (resolved == null) {
+        _showInviteMessage('Приглашение недоступно');
+        return;
+      }
+      final saved = await repository.save(token);
+      if (!mounted) {
+        return;
+      }
+      if (saved == null) {
+        _showInviteMessage('Приглашение недоступно');
+        return;
+      }
+      _showInviteMessage('Приглашение добавлено в список.');
+    } on PostgrestException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      _showInviteMessage(error.message);
     } finally {
-      if (_openInvitePayload == payload) {
+      if (_openInvitePayload == token) {
         _openInvitePayload = null;
       }
     }
+  }
+
+  void _showInviteMessage(String message) {
+    final context = appNavigatorKey.currentState?.overlay?.context;
+    if (context == null || !context.mounted) {
+      return;
+    }
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.clearSnackBars();
+    messenger.showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       navigatorKey: appNavigatorKey,
-      title: 'Geo Groups',
-      theme: appLightTheme,
-      home: HomeScreen(invitations: defaultGroupInvitationRepository()),
+      title: 'Qunora',
+      theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
+      themeMode: ThemeMode.system,
+      home: HomeScreen(
+        invitations: widget.invitations ?? defaultGroupInvitationRepository(),
+      ),
       builder: (context, child) {
         return LocationRepositoryScope(
           repository: widget.locations,
@@ -350,6 +355,9 @@ class _HomeScreenState extends State<HomeScreen> {
       isScrollControlled: true,
       useSafeArea: true,
       showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
       builder: (context) =>
           _DemoUserSheet(users: demoUsers, currentUserId: currentDemoUserId),
     );
@@ -382,7 +390,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Geo Groups'),
+        title: const Text('Qunora'),
         leading: const Icon(Icons.groups),
         actions: [
           IconButton(
@@ -432,8 +440,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 onPressed: () => _openScreen(const CreatedGroupsScreen()),
                 child: const Text('Создать группу'),
               ),
-              const SizedBox(height: 12),
-              OutlinedButton(
+              const SizedBox(height: 8),
+              TextButton(
                 onPressed: () => _openScreen(
                   InvitationsScreen(
                     invitations: widget.invitations,
@@ -448,8 +456,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                 ),
               ),
-              const SizedBox(height: 12),
-              OutlinedButton(
+              const SizedBox(height: 8),
+              TextButton(
                 onPressed: () => _openScreen(const MyGroupsScreen()),
                 child: const Text('Мои группы'),
               ),

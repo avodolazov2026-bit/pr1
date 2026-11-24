@@ -1,0 +1,10 @@
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/app_icon.png"
+  adaptive_icon_background: "#4059E8"
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
+  # Отступ 25% уже в файле переднего плана, повторный inset инструмента не нужен.
+  adaptive_icon_foreground_inset: 0
+  remove_alpha_ios: true
+  min_sdk_android: 23

@@ -6,6 +6,7 @@ import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/group_card.dart';
 import 'package:geo_groups/group_period.dart';
 import 'package:geo_groups/group_screen.dart';
+import 'package:geo_groups/theme/app_theme.dart';
 
 class MyGroupsScreen extends StatefulWidget {
   const MyGroupsScreen({super.key, this.now});
@@ -123,25 +124,14 @@ class _MyGroupsScreenState extends State<MyGroupsScreen>
     final finished = visible.where((group) => group.isFinished).toList()
       ..sort(compareFinishedGroups);
     final sections =
-        <({String title, String? note, List<GeoGroup> groups, Color color})>[
+        <({String title, String? note, List<GeoGroup> groups})>[
           (
             title: 'Активные',
             note: 'Группы, в которых я участвую.',
             groups: active,
-            color: activeGroupAccent,
           ),
-          (
-            title: 'Будущие',
-            note: null,
-            groups: upcoming,
-            color: upcomingGroupAccent,
-          ),
-          (
-            title: 'Завершённые',
-            note: null,
-            groups: finished,
-            color: finishedGroupAccent,
-          ),
+          (title: 'Будущие', note: null, groups: upcoming),
+          (title: 'Завершённые', note: null, groups: finished),
         ].where((section) => section.groups.isNotEmpty).toList();
     final periodIsEmpty = membership.isNotEmpty && sections.isEmpty;
 
@@ -161,79 +151,56 @@ class _MyGroupsScreenState extends State<MyGroupsScreen>
                 },
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 20),
             Expanded(
               child: membership.isEmpty
                   ? const Center(child: Text('Групп пока нет'))
                   : periodIsEmpty
                   ? const Center(child: Text('В выбранном периоде групп нет'))
-                  : ListView(
-                      padding: const EdgeInsets.all(24),
-                      children: [
-                        for (final section in sections) ...[
-                          _SectionHeader(
-                            title: section.title,
-                            count: section.groups.length,
-                            color: section.color,
-                          ),
-                          if (section.note != null) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              section.note!,
-                              style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
-                                  ),
+                  : Container(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? AppColors.surfaceSubtleDark
+                          : AppColors.surfaceSubtle,
+                      child: ListView(
+                        padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                        children: [
+                          for (var index = 0; index < sections.length; index++) ...[
+                            AppSectionHeader(
+                              title: sections[index].title,
+                              subtitle: sections[index].note,
+                              trailing: Text(
+                                '${sections[index].groups.length}',
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                              ),
                             ),
+                            for (
+                              var groupIndex = 0;
+                              groupIndex < sections[index].groups.length;
+                              groupIndex++
+                            ) ...[
+                              GroupCard(
+                                group: sections[index].groups[groupIndex],
+                                onTap: () => _openGroup(
+                                  sections[index].groups[groupIndex],
+                                ),
+                              ),
+                              if (groupIndex != sections[index].groups.length - 1)
+                                const SizedBox(height: 10),
+                            ],
+                            if (index != sections.length - 1)
+                              const SizedBox(height: 20),
                           ],
-                          const SizedBox(height: 12),
-                          for (final group in section.groups) ...[
-                            GroupCard(
-                              group: group,
-                              onTap: () => _openGroup(group),
-                            ),
-                            const SizedBox(height: 12),
-                          ],
-                          const SizedBox(height: 12),
                         ],
-                      ],
+                      ),
                     ),
             ),
           ],
         ),
       ),
-    );
-  }
-}
-
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({
-    required this.title,
-    required this.count,
-    required this.color,
-  });
-
-  final String title;
-  final int count;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    final style = Theme.of(context).textTheme.titleMedium;
-    return Row(
-      children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 8),
-        Text(title, style: style),
-        const SizedBox(width: 8),
-        Text('$count', style: style),
-      ],
     );
   }
 }
