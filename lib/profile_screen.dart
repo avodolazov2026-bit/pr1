@@ -277,9 +277,6 @@ class _PhoneAccountSection extends StatelessWidget {
         ],
       );
     }
-    if (!account.needsPhoneSignIn) {
-      return const SizedBox.shrink();
-    }
     return Card(
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),

@@ -40,6 +40,7 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    GroupsStore.instance.addListener(_onGroupsChanged);
     _scheduleStatusRefresh();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
@@ -52,8 +53,17 @@ class _CreatedGroupsScreenState extends State<CreatedGroupsScreen>
   @override
   void dispose() {
     _statusRefreshTimer?.cancel();
+    GroupsStore.instance.removeListener(_onGroupsChanged);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  void _onGroupsChanged() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
+    _scheduleStatusRefresh();
   }
 
   @override

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -55,6 +57,44 @@ void main() {
     );
     expect(confirmed.needsPhoneSignIn, isFalse);
     expect(confirmed.phoneE164, '+79991234567');
+    expect(AuthAccount.local().needsPhoneSignIn, isTrue);
+    expect(
+      accountFromSupabaseUser(
+        _user(
+          phone: '+79991234567',
+          phoneConfirmedAt: '2026-11-22T00:00:00Z',
+          isAnonymous: true,
+        ),
+      ).needsPhoneSignIn,
+      isTrue,
+    );
+    expect(
+      accountFromSupabaseUser(
+        _user(
+          phone: '+79991234567',
+          phoneConfirmedAt: '2026-11-22T00:00:00Z',
+          appMetadata: const {
+            'provider': 'anonymous',
+            'providers': ['anonymous'],
+          },
+        ),
+      ).needsPhoneSignIn,
+      isTrue,
+    );
+    expect(
+      accountFromSupabaseUser(
+        _user(phone: '+79991234567', phoneConfirmedAt: '2026-11-22T00:00:00Z'),
+        accessToken: _jwt(isAnonymous: true),
+      ).needsPhoneSignIn,
+      isTrue,
+    );
+    expect(
+      accountFromSupabaseUser(
+        _user(phone: '+79991234567', phoneConfirmedAt: '2026-11-22T00:00:00Z'),
+        accessToken: _jwt(isAnonymous: false),
+      ).needsPhoneSignIn,
+      isFalse,
+    );
   });
 
   testWidgets('an anonymous profile offers phone sign-in', (tester) async {
@@ -64,9 +104,7 @@ void main() {
 
     expect(find.text('Войти или зарегистрироваться'), findsOneWidget);
     expect(
-      find.text(
-        'Войдите по номеру телефона, чтобы создавать группы',
-      ),
+      find.text('Войдите по номеру телефона, чтобы создавать группы'),
       findsOneWidget,
     );
 
@@ -74,6 +112,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Войдите по номеру телефона'), findsOneWidget);
+  });
+
+  testWidgets('a local profile offers phone sign-in', (tester) async {
+    await _openProfile(tester, _FakeAuth(const AuthAccount.local()));
+
+    expect(find.text('Войти или зарегистрироваться'), findsOneWidget);
+    expect(find.text('Номер подтверждён'), findsNothing);
   });
 
   testWidgets('a confirmed profile shows the masked number and sign-out', (
@@ -244,10 +289,11 @@ User _user({
   bool isAnonymous = false,
   String? phone,
   String? phoneConfirmedAt,
+  Map<String, dynamic> appMetadata = const {},
 }) {
   return User(
     id: 'user-1',
-    appMetadata: const {},
+    appMetadata: appMetadata,
     userMetadata: const {},
     aud: 'authenticated',
     createdAt: '2026-11-22T00:00:00Z',
@@ -255,6 +301,13 @@ User _user({
     phoneConfirmedAt: phoneConfirmedAt,
     isAnonymous: isAnonymous,
   );
+}
+
+String _jwt({required bool isAnonymous}) {
+  final payload = base64Url
+      .encode(utf8.encode('{"is_anonymous":$isAnonymous}'))
+      .replaceAll('=', '');
+  return 'eyJhbGciOiJub25lIn0.$payload.sig';
 }
 
 class _FakeAuth implements AuthRepository {
@@ -338,10 +391,7 @@ Future<void> _openCreate(WidgetTester tester, AuthRepository auth) async {
   addTearDown(tester.view.resetDevicePixelRatio);
   await tester.pumpWidget(
     MaterialApp(
-      home: CreatedGroupsScreen(
-        auth: auth,
-        groups: LocalGroupRepository(),
-      ),
+      home: CreatedGroupsScreen(auth: auth, groups: LocalGroupRepository()),
     ),
   );
 }

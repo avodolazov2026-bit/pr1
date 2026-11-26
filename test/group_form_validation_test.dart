@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:geo_groups/auth_repository.dart';
 import 'package:geo_groups/created_groups_screen.dart';
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/theme/app_theme.dart';
@@ -28,7 +29,7 @@ void main() {
               child: child!,
             );
           },
-          home: const CreatedGroupsScreen(),
+          home: const CreatedGroupsScreen(auth: _confirmedPhone),
         ),
       );
       await tester.tap(find.text('Создать группу'));
@@ -215,7 +216,7 @@ Future<void> _openCreateForm(WidgetTester tester) async {
           child: child!,
         );
       },
-      home: const CreatedGroupsScreen(),
+      home: const CreatedGroupsScreen(auth: _confirmedPhone),
     ),
   );
   await tester.tap(find.text('Создать группу'));
@@ -238,6 +239,29 @@ Future<DateTime> _chooseEnd(WidgetTester tester) async {
   await _enterTime(tester, const TimeOfDay(hour: 18, minute: 0));
   expect(find.text('Окончание: ${formatGroupDateTime(end)}'), findsOneWidget);
   return end;
+}
+
+const _confirmedPhone = _ConfirmedPhoneAuth();
+
+class _ConfirmedPhoneAuth implements AuthRepository {
+  const _ConfirmedPhoneAuth();
+
+  @override
+  AuthAccount get current => const AuthAccount.confirmed('+79990000000');
+
+  @override
+  Future<void> sendPhoneOtp(String phoneE164) async {}
+
+  @override
+  Future<void> verifyPhoneOtp({
+    required String phoneE164,
+    required String code,
+  }) async {}
+
+  @override
+  Future<AuthSignOutResult> signOut() async {
+    return const AuthSignOutResult(anonymousSessionRestored: true);
+  }
 }
 
 FilledButton _createButton(WidgetTester tester) {

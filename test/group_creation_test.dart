@@ -121,7 +121,10 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        home: CreatedGroupsScreen(groups: LocalGroupRepository()),
+        home: CreatedGroupsScreen(
+          auth: _GateAuth(const AuthAccount.confirmed('+79991234567')),
+          groups: LocalGroupRepository(),
+        ),
       ),
     );
     await tester.tap(find.text('Создать группу').first);
@@ -460,7 +463,7 @@ void main() {
     expect(find.text(phoneSignInDialogMessage), findsNothing);
   });
 
-  testWidgets('a local account opens the create form immediately', (
+  testWidgets('a local account is asked to sign in before the form', (
     tester,
   ) async {
     await _openCreatedGroups(tester, _GateAuth(const AuthAccount.local()));
@@ -468,8 +471,9 @@ void main() {
     await tester.tap(find.text('Создать группу'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Новая группа'), findsOneWidget);
-    expect(find.text(phoneSignInDialogMessage), findsNothing);
+    expect(find.text(phoneSignInDialogTitle), findsOneWidget);
+    expect(find.text(phoneSignInDialogMessage), findsOneWidget);
+    expect(find.text('Новая группа'), findsNothing);
   });
 }
 

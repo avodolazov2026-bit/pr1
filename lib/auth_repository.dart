@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -16,8 +18,9 @@ class AuthAccount {
   final AuthKind kind;
   final String? phoneE164;
 
-  /// Телефонный экран нужен только при живой неподтверждённой сессии Supabase.
-  bool get needsPhoneSignIn => kind == AuthKind.anonymous;
+  /// Вход нужен всем, кроме подтверждённого телефонного аккаунта.
+  /// Анонимная сессия и отсутствие сессии регистрацией не являются.
+  bool get needsPhoneSignIn => kind != AuthKind.confirmedPhone;
 }
 
 const phoneSignInSubtitle =
@@ -71,7 +74,10 @@ class SupabaseAuthRepository implements AuthRepository {
     if (auth == null) {
       return const AuthAccount.local();
     }
-    return accountFromSupabaseUser(auth.currentUser);
+    return accountFromSupabaseUser(
+      auth.currentUser,
+      accessToken: auth.currentSession?.accessToken,
+    );
   }
 
   @override
@@ -161,9 +167,9 @@ extension on AuthKind {
   bool get isConfirmed => this == AuthKind.confirmedPhone;
 }
 
-/// Подтверждённый телефон — неанонимный пользователь с phone и phoneConfirmedAt.
-AuthAccount accountFromSupabaseUser(User? user) {
-  if (user == null || user.isAnonymous) {
+/// Подтверждённый телефон. Анонимная сессия, даже с currentUser, не считается входом.
+AuthAccount accountFromSupabaseUser(User? user, {String? accessToken}) {
+  if (user == null || _sessionIsAnonymous(user, accessToken)) {
     return const AuthAccount.anonymous();
   }
   final phone = user.phone?.trim();
@@ -175,6 +181,52 @@ AuthAccount accountFromSupabaseUser(User? user) {
     return const AuthAccount.anonymous();
   }
   return AuthAccount.confirmed(phone);
+}
+
+/// `isAnonymous` в сохранённой сессии бывает false, хотя JWT всё ещё анонимный.
+bool _sessionIsAnonymous(User user, String? accessToken) {
+  if (user.isAnonymous) {
+    return true;
+  }
+  if (_metadataIsAnonymous(user.appMetadata)) {
+    return true;
+  }
+  final identities = user.identities;
+  if (identities != null &&
+      identities.isNotEmpty &&
+      identities.every((identity) => identity.provider == 'anonymous')) {
+    return true;
+  }
+  return _accessTokenIsAnonymous(accessToken);
+}
+
+bool _metadataIsAnonymous(Map<String, dynamic> metadata) {
+  if (metadata['provider'] == 'anonymous') {
+    return true;
+  }
+  final providers = metadata['providers'];
+  return providers is List &&
+      providers.isNotEmpty &&
+      providers.every((provider) => provider == 'anonymous');
+}
+
+bool _accessTokenIsAnonymous(String? accessToken) {
+  if (accessToken == null || accessToken.isEmpty) {
+    return false;
+  }
+  final parts = accessToken.split('.');
+  if (parts.length < 2) {
+    return false;
+  }
+  try {
+    final payload = utf8.decode(
+      base64Url.decode(base64Url.normalize(parts[1])),
+    );
+    final decoded = jsonDecode(payload);
+    return decoded is Map && decoded['is_anonymous'] == true;
+  } catch (_) {
+    return false;
+  }
 }
 
 String _message(String message) {
