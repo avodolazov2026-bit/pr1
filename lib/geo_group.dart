@@ -107,6 +107,9 @@ class GroupMember {
   bool get isCurrentUser => id == currentDemoUserId;
 }
 
+/// Логический статус группы по расписанию. Текст бейджа и цвета берутся отсюда.
+enum GroupScheduleStatus { upcoming, active, finished, cancelled, expired }
+
 class GeoGroup {
   GeoGroup({
     required this.id,
@@ -278,20 +281,30 @@ class GeoGroup {
     return endedByOrganizer && endedAt != null && endedAt.isBefore(startsAt);
   }
 
-  String get statusBadge {
+  GroupScheduleStatus get scheduleStatus {
     if (isUpcoming) {
-      return 'Запланирована';
+      return GroupScheduleStatus.upcoming;
     }
     if (isActive) {
-      return 'Активна';
+      return GroupScheduleStatus.active;
     }
     if (wasCancelledBeforeStart) {
-      return 'Отменена';
+      return GroupScheduleStatus.cancelled;
     }
     if (endedByOrganizer) {
-      return 'Завершена';
+      return GroupScheduleStatus.finished;
     }
-    return 'Истекла';
+    return GroupScheduleStatus.expired;
+  }
+
+  String get statusBadge {
+    return switch (scheduleStatus) {
+      GroupScheduleStatus.upcoming => 'Запланирована',
+      GroupScheduleStatus.active => 'Активна',
+      GroupScheduleStatus.finished => 'Завершена',
+      GroupScheduleStatus.cancelled => 'Отменена',
+      GroupScheduleStatus.expired => 'Истекла',
+    };
   }
 
   String get scheduleSummary {
@@ -361,7 +374,7 @@ enum InvitationAcceptResult {
   alreadyMember,
 }
 
-class GroupsStore {
+class GroupsStore with ChangeNotifier {
   GroupsStore._() {
     groups.addAll(_demoGroups());
     invitations.addAll(_demoInvitations());
@@ -383,10 +396,13 @@ class GroupsStore {
   }
 
   /// Заменяет список групп. Приглашения не меняются.
+  ///
+  /// Слушатели узнают о публикации сразу, без паузы приложения.
   void replaceGroups(List<GeoGroup> next) {
     groups
       ..clear()
       ..addAll(next);
+    notifyListeners();
   }
 
   GeoGroup? groupById(String id) {
@@ -902,6 +918,17 @@ String formatGroupDateTime(DateTime value) {
   return '${local.day} ${_months[local.month - 1]}, $hour:$minute';
 }
 
+/// Компактная точка расписания в местном времени: «25 нояб. 2026, 18:30».
+String formatGroupSchedulePoint(DateTime value) {
+  final local = value.toLocal();
+  final hour = local.hour.toString().padLeft(2, '0');
+  final minute = local.minute.toString().padLeft(2, '0');
+  return '${local.day} ${_shortMonths[local.month - 1]} ${local.year}, $hour:$minute';
+}
+
+/// Подпись окончания, когда у группы нет [GeoGroup.endsAt].
+const groupScheduleOpenEnded = 'Без срока окончания';
+
 String formatGroupDate(DateTime value) {
   final local = value.toLocal();
   return '${local.day} ${_months[local.month - 1]}';
@@ -912,6 +939,21 @@ String formatGroupTime(TimeOfDay time) {
   final minute = time.minute.toString().padLeft(2, '0');
   return '$hour:$minute';
 }
+
+const _shortMonths = <String>[
+  'янв.',
+  'февр.',
+  'мар.',
+  'апр.',
+  'мая',
+  'июн.',
+  'июл.',
+  'авг.',
+  'сент.',
+  'окт.',
+  'нояб.',
+  'дек.',
+];
 
 const _months = <String>[
   'января',

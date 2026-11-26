@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:geo_groups/created_groups_screen.dart';
 import 'package:geo_groups/geo_group.dart';
+import 'package:geo_groups/group_card.dart';
 import 'package:geo_groups/group_invitation.dart';
 import 'package:geo_groups/group_map_screen.dart';
 import 'package:geo_groups/group_period.dart';
@@ -418,13 +419,22 @@ void main() {
     expect(find.text('Будущие'), findsOneWidget);
     expect(find.text('Завершённые'), findsOneWidget);
     expect(find.text('Запланирована'), findsOneWidget);
-    expect(find.textContaining('Начнётся'), findsOneWidget);
+    expect(
+      find.textContaining(formatGroupSchedulePoint(upcoming.startsAt)),
+      findsWidgets,
+    );
     expect(find.text('Активна'), findsWidgets);
     expect(
-      find.text('Истекла ${formatGroupDateTime(finished.endsAt!)}'),
-      findsOneWidget,
+      find.textContaining(formatGroupSchedulePoint(finished.endsAt!)),
+      findsWidgets,
     );
-    expect(find.text('Без срока окончания'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.widgetWithText(GroupCard, 'Секция бессрочная'),
+        matching: find.textContaining('Окончание'),
+      ),
+      findsNothing,
+    );
 
     final labels = tester
         .widgetList<Text>(find.byType(Text))

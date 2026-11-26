@@ -484,17 +484,52 @@ void main() {
 
     await tester.pumpWidget(MaterialApp(home: GroupScreen(group: group)));
 
-    final avatars = tester
-        .widgetList<ProfileAvatar>(find.byType(ProfileAvatar))
-        .toList();
-    expect(avatars.map((avatar) => (avatar.displayName, avatar.avatarId)), [
-      ('В походе', 'blue_face'),
-      ('Старый', defaultAvatarId),
-    ]);
+    final joined = _avatarInRow(tester, 'В походе');
+    expect(joined.displayName, 'В походе');
+    expect(joined.avatarId, 'blue_face');
+    expect(
+      find.descendant(
+        of: _memberRow('В походе'),
+        matching: find.byIcon(Icons.face),
+      ),
+      findsOneWidget,
+    );
+
+    final legacy = _avatarInRow(tester, 'Старый');
+    expect(legacy.displayName, 'Старый');
+    expect(legacy.avatarId, defaultAvatarId);
+    expect(
+      find.descendant(
+        of: _memberRow('Старый'),
+        matching: find.byIcon(Icons.person),
+      ),
+      findsOneWidget,
+    );
+
+    expect(_memberRow('Организатор'), findsOneWidget);
+    expect(find.byType(ProfileAvatar), findsNWidgets(3));
     expect(find.text(memberInitials('В походе')), findsNothing);
     expect(find.text(memberInitials('Старый')), findsNothing);
-    expect(find.byIcon(Icons.face), findsOneWidget);
   });
+}
+
+Finder _memberRow(String name) {
+  return find.byWidgetPredicate((widget) {
+    if (widget is! ListTile) {
+      return false;
+    }
+    final title = widget.title;
+    return title is Text && title.data == name;
+  });
+}
+
+ProfileAvatar _avatarInRow(WidgetTester tester, String name) {
+  return tester.widget<ProfileAvatar>(
+    find.descendant(
+      of: _memberRow(name),
+      matching: find.byType(ProfileAvatar),
+    ),
+  );
 }
 
 Future<void> _confirmJoin(

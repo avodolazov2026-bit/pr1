@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:geo_groups/edit_group_screen.dart';
 import 'package:geo_groups/geo_group.dart';
 import 'package:geo_groups/group_map_screen.dart';
+import 'package:geo_groups/group_status_style.dart';
 import 'package:geo_groups/map_time_format.dart';
 import 'package:geo_groups/member_distance.dart';
 import 'package:geo_groups/user_profile.dart';
@@ -142,13 +143,7 @@ class _GroupScreenState extends State<GroupScreen> {
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: [
-            Text(
-              group.scheduleSummary,
-              style: textTheme.bodyLarge?.copyWith(
-                color: group.isFinished ? colorScheme.error : null,
-                fontWeight: group.isFinished ? FontWeight.w600 : null,
-              ),
-            ),
+            _GroupScheduleBlock(group: group),
             if (group.isUpcoming) ...[
               const SizedBox(height: 12),
               Text(
@@ -171,7 +166,7 @@ class _GroupScreenState extends State<GroupScreen> {
             for (final member in participants)
               _MemberTile(
                 member: member,
-                lines: group.canUseMap
+                lines: group.canUseMap && !member.isCurrentUser
                     ? _memberLocationLines(
                         group,
                         member,
@@ -253,11 +248,10 @@ class _GroupScreenState extends State<GroupScreen> {
   }
 }
 
-/// В списке остаются другие активные участники, как и раньше.
+/// Активные участники, включая текущего пользователя.
 Iterable<GroupMember> _listedMembers(GeoGroup group) {
   return group.members.where(
-    (member) =>
-        member.status == MembershipStatus.active && !member.isCurrentUser,
+    (member) => member.status == MembershipStatus.active,
   );
 }
 
@@ -302,6 +296,12 @@ class _MemberTile extends StatelessWidget {
         radius: 20,
       ),
       title: Text(member.name),
+      trailing: member.isCurrentUser && member.role == MemberRole.organizer
+          ? Text(
+              'Организатор',
+              style: textTheme.bodyMedium?.copyWith(color: color),
+            )
+          : null,
       subtitle: lines.isEmpty
           ? null
           : Column(
@@ -314,6 +314,92 @@ class _MemberTile extends StatelessWidget {
                   ),
               ],
             ),
+    );
+  }
+}
+
+class _GroupScheduleBlock extends StatelessWidget {
+  const _GroupScheduleBlock({required this.group});
+
+  final GeoGroup group;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final endsAt = group.endsAt;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Расписание', style: textTheme.titleMedium),
+        const SizedBox(height: 12),
+        _ScheduleLine(
+          label: 'Начало',
+          value: formatGroupSchedulePoint(group.startsAt),
+        ),
+        const SizedBox(height: 8),
+        _ScheduleLine(
+          label: 'Окончание',
+          value: endsAt == null
+              ? groupScheduleOpenEnded
+              : formatGroupSchedulePoint(endsAt),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            SizedBox(
+              width: 108,
+              child: Text(
+                'Статус',
+                style: textTheme.bodyLarge?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            Flexible(child: GroupStatusBadge(group: group)),
+          ],
+        ),
+        if (group.scheduleStatus == GroupScheduleStatus.finished) ...[
+          const SizedBox(height: 12),
+          Text(
+            group.scheduleSummary,
+            style: textTheme.bodyLarge?.copyWith(
+              color: colorScheme.error,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _ScheduleLine extends StatelessWidget {
+  const _ScheduleLine({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 108,
+          child: Text(
+            label,
+            style: textTheme.bodyLarge?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        Expanded(child: Text(value, style: textTheme.bodyLarge)),
+      ],
     );
   }
 }

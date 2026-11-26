@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:geo_groups/geo_group.dart';
+import 'package:geo_groups/group_status_style.dart';
 import 'package:geo_groups/theme/app_theme.dart';
 
 class GroupCard extends StatelessWidget {
@@ -24,6 +25,7 @@ class GroupCard extends StatelessWidget {
     final cardColor = colorScheme.brightness == Brightness.dark
         ? colorScheme.surfaceContainerHighest
         : AppColors.surfaceContainer;
+    final statusStyle = GroupStatusStyle.of(colorScheme, group);
     const cardRadius = 18.0;
 
     return Opacity(
@@ -38,7 +40,9 @@ class GroupCard extends StatelessWidget {
           color: Colors.transparent,
           borderRadius: BorderRadius.circular(cardRadius),
           clipBehavior: Clip.antiAlias,
-          child: Column(
+          child: Stack(
+            children: [
+              Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -63,11 +67,25 @@ class GroupCard extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(width: 8),
-                            _StatusBadge(group: group),
+                            GroupStatusBadge(group: group),
                           ],
                         ),
                         const SizedBox(height: 8),
-                        Text(group.scheduleSummary, style: textTheme.bodyLarge),
+                        Text(
+                          'Начало ${formatGroupSchedulePoint(group.startsAt)}',
+                          style: textTheme.bodyMedium?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        if (group.endsAt case final endsAt?) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            'Окончание ${formatGroupSchedulePoint(endsAt)}',
+                            style: textTheme.bodyMedium?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 12),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -161,73 +179,34 @@ class GroupCard extends StatelessWidget {
                   ),
               ],
             ),
+              Positioned(
+                top: 0,
+                right: 0,
+                bottom: 0,
+                child: GroupStatusStripe(color: statusStyle.line),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _StatusBadge extends StatelessWidget {
-  const _StatusBadge({required this.group});
+/// Правая полоса статуса. Лежит внутри обрезанной карточки и тянется по её высоте.
+class GroupStatusStripe extends StatelessWidget {
+  const GroupStatusStripe({super.key, required this.color});
 
-  final GeoGroup group;
+  final Color color;
+
+  static const width = 4.0;
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    final colorScheme = Theme.of(context).colorScheme;
-    final muted = (
-      colorScheme.surfaceContainerHighest,
-      colorScheme.onSurfaceVariant,
-    );
-    final active = group.statusBadge == 'Активна';
-    final (background, foreground, icon) = switch (group.statusBadge) {
-      'Активна' => (
-        colorScheme.secondary,
-        colorScheme.onSecondary,
-        Icons.play_circle_outline,
-      ),
-      'Запланирована' => (
-        muted.$1,
-        muted.$2,
-        Icons.event_outlined,
-      ),
-      'Отменена' => (
-        muted.$1,
-        muted.$2,
-        Icons.event_busy_outlined,
-      ),
-      'Завершена' || 'Истекла' => (
-        muted.$1,
-        muted.$2,
-        Icons.history,
-      ),
-      _ => (muted.$1, muted.$2, Icons.history),
-    };
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(active ? 100 : 8),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: active ? 13 : 16, color: foreground),
-            const SizedBox(width: 4),
-            Text(
-              group.statusBadge,
-              style: textTheme.labelMedium?.copyWith(
-                color: foreground,
-                fontSize: active ? 12 : null,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
+    return SizedBox(
+      width: width,
+      child: ColoredBox(color: color),
     );
   }
 }
+

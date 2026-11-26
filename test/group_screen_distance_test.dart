@@ -33,7 +33,8 @@ void main() {
 
     expect(find.text(formatDistanceMeters(meters)!), findsOneWidget);
     expect(find.text('Обновлено 5 мин назад'), findsOneWidget);
-    expect(find.text('Вы'), findsNothing);
+    expect(find.text('Вы'), findsOneWidget);
+    expect(find.text('Организатор'), findsNothing);
     expect(find.textContaining('Ваша позиция'), findsNothing);
   });
 
